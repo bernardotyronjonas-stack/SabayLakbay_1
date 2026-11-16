@@ -1,0 +1,83 @@
+package sabaylakbay_1.model;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+
+/** A travel group / trip. */
+public class TravelGroup {
+
+    private int id;
+    private String title;
+    private String destination;
+    private LocalDate startDate;
+    private LocalDate endDate;
+    private double budgetPerPerson;
+    private int maxMembers;
+    private int currentMembers;
+    private String transportMode;
+    private String meetingPlace;
+    private LocalTime meetingTime;
+    private String description;
+    private String creatorNotes;
+    private String imagePath;
+    private int creatorId;
+    private String creatorName;
+    private GroupStatus status;
+    private LocalDateTime createdAt;
+
+    public TravelGroup() { }
+
+    public int getSlotsAvailable() { return Math.max(0, maxMembers - currentMembers); }
+    public boolean isFull() { return currentMembers >= maxMembers; }
+    public boolean isCancelled() { return status == GroupStatus.CANCELLED; }
+    /** A trip is completed once its end date has passed. */
+    public boolean isCompleted() { return endDate != null && endDate.isBefore(LocalDate.now()); }
+
+    public TravelGroup copy() {
+        TravelGroup g = new TravelGroup();
+        g.id = id; g.title = title; g.destination = destination; g.startDate = startDate; g.endDate = endDate;
+        g.budgetPerPerson = budgetPerPerson; g.maxMembers = maxMembers; g.currentMembers = currentMembers;
+        g.transportMode = transportMode; g.meetingPlace = meetingPlace; g.meetingTime = meetingTime;
+        g.description = description; g.creatorNotes = creatorNotes; g.imagePath = imagePath;
+        g.creatorId = creatorId; g.creatorName = creatorName; g.status = status; g.createdAt = createdAt;
+        return g;
+    }
+
+    public int getId() { return id; }
+    public void setId(int id) { this.id = id; }
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+    public String getDestination() { return destination; }
+    public void setDestination(String destination) { this.destination = destination; }
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
+    public LocalDate getEndDate() { return endDate; }
+    public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
+    public double getBudgetPerPerson() { return budgetPerPerson; }
+    public void setBudgetPerPerson(double budgetPerPerson) { this.budgetPerPerson = budgetPerPerson; }
+    public int getMaxMembers() { return maxMembers; }
+    public void setMaxMembers(int maxMembers) { this.maxMembers = maxMembers; }
+    public int getCurrentMembers() { return currentMembers; }
+    public void setCurrentMembers(int currentMembers) { this.currentMembers = currentMembers; }
+    public String getTransportMode() { return transportMode; }
+    public void setTransportMode(String transportMode) { this.transportMode = transportMode; }
+    public String getMeetingPlace() { return meetingPlace; }
+    public void setMeetingPlace(String meetingPlace) { this.meetingPlace = meetingPlace; }
+    public LocalTime getMeetingTime() { return meetingTime; }
+    public void setMeetingTime(LocalTime meetingTime) { this.meetingTime = meetingTime; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public String getCreatorNotes() { return creatorNotes; }
+    public void setCreatorNotes(String creatorNotes) { this.creatorNotes = creatorNotes; }
+    public String getImagePath() { return imagePath; }
+    public void setImagePath(String imagePath) { this.imagePath = imagePath; }
+    public int getCreatorId() { return creatorId; }
+    public void setCreatorId(int creatorId) { this.creatorId = creatorId; }
+    public String getCreatorName() { return creatorName; }
+    public void setCreatorName(String creatorName) { this.creatorName = creatorName; }
+    public GroupStatus getStatus() { return status; }
+    public void setStatus(GroupStatus status) { this.status = status; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+}
