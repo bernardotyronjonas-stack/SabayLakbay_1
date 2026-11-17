@@ -7,12 +7,13 @@
 --    * itinerary has no cost column: costs live in activity_expenses
 --    * no payment table: payments are settled outside the app
 --  Added because the app needs them (marked ADDED below):
---    users.user_phone, activities meeting place/time, transport, notes, image, created date,
---    group_messages.message_is_announcement, direct_messages, notifications,
---    reports.report_message_id / details / action taken / dates,
+--    users.phone, activities meeting place/time, transport, notes, image, created date,
+--    group_messages.is_announcement, direct_messages, notifications,
+--    reports.message_id / details / action taken / dates,
 --    users address (street, barangay, city, province, ZIP), home pin and user_interests (personalized home page),
---    users.user_birthdate / gender / emergency contact and id_verifications.verification_id_type / selfie (sign-up),
---    admin_logs (record of every admin action)
+--    users.birthdate / gender / emergency contact and id_verifications.id_type / selfie (sign-up),
+--    admin_logs (record of every admin action),
+--    direct_messages.is_read and chat_reads (unread messages), activities meeting place pin (groups near you)
 --
 --  HOW TO RUN: phpMyAdmin > SQL tab > paste this whole file > Go
 --  WARNING: running it again DELETES the database and starts fresh.
@@ -25,209 +26,222 @@ CREATE DATABASE sabaylakbay CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE sabaylakbay;
 
 CREATE TABLE users (
-    user_id               INT AUTO_INCREMENT PRIMARY KEY,
-    user_full_name        VARCHAR(100) NOT NULL,
-    user_email            VARCHAR(120) NOT NULL UNIQUE,
-    user_password         VARCHAR(64)  NOT NULL,                 -- SHA-256 hash, never the plain password
-    user_phone            VARCHAR(20),                           -- ADDED (asked on Register)
-    user_profile_picture  VARCHAR(255),
-    user_birthdate        DATE,                                  -- ADDED (must be 18+ to sign up)
-    user_gender           VARCHAR(20),                           -- ADDED (optional: Female, Male, Prefer not to say)
-    user_emergency_name   VARCHAR(100),                          -- ADDED (who to call during a trip)
-    user_emergency_phone  VARCHAR(20),                           -- ADDED
-    user_street           VARCHAR(150),                          -- ADDED (house no., street, building)
-    user_barangay         VARCHAR(100),                          -- ADDED
-    user_city             VARCHAR(100),                          -- ADDED (city / municipality)
-    user_province         VARCHAR(100),                          -- ADDED (or Metro Manila)
-    user_zip_code         VARCHAR(4),                            -- ADDED
-    user_latitude         DECIMAL(9,6),                          -- ADDED (optional home pin, for trips near you)
-    user_longitude        DECIMAL(9,6),                          -- ADDED
-    user_role             ENUM('TRAVELER','ADMIN') NOT NULL DEFAULT 'TRAVELER',
-    user_account_status   ENUM('ACTIVE','SUSPENDED','REMOVED') NOT NULL DEFAULT 'ACTIVE',
-    user_created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    user_id                   INT AUTO_INCREMENT PRIMARY KEY,
+    full_name                 VARCHAR(100) NOT NULL,
+    email                     VARCHAR(120) NOT NULL UNIQUE,
+    password_hash             VARCHAR(64)  NOT NULL,                                        -- SHA-256 hash, never the plain password
+    phone                     VARCHAR(20),                                                  -- ADDED (asked on Register)
+    profile_picture           VARCHAR(255),
+    birthdate                 DATE,                                                         -- ADDED (must be 18+ to sign up)
+    gender                    VARCHAR(20),                                                  -- ADDED (optional: Female, Male, Prefer not to say)
+    emergency_contact_name    VARCHAR(100),                                                 -- ADDED (who to call during a trip)
+    emergency_contact_phone   VARCHAR(20),                                                  -- ADDED
+    street                    VARCHAR(150),                                                 -- ADDED (house no., street, building)
+    barangay                  VARCHAR(100),                                                 -- ADDED
+    city                      VARCHAR(100),                                                 -- ADDED (city / municipality)
+    province                  VARCHAR(100),                                                 -- ADDED (or Metro Manila)
+    zip_code                  VARCHAR(4),                                                   -- ADDED
+    latitude                  DECIMAL(9,6),                                                 -- ADDED (optional home pin, for trips near you)
+    longitude                 DECIMAL(9,6),                                                 -- ADDED
+    role                      ENUM('TRAVELER','ADMIN') NOT NULL DEFAULT 'TRAVELER',
+    account_status            ENUM('ACTIVE','SUSPENDED','REMOVED') NOT NULL DEFAULT 'ACTIVE',
+    created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
--- ADDED: what each traveler likes (same names as activity_category), asked on sign-up
+-- ADDED: what each traveler likes (same names as category), asked on sign-up
 CREATE TABLE user_interests (
-    user_interest_user_id   INT NOT NULL,
-    user_interest_category  VARCHAR(40) NOT NULL,
-    PRIMARY KEY (user_interest_user_id, user_interest_category),
-    FOREIGN KEY (user_interest_user_id) REFERENCES users(user_id) ON DELETE CASCADE
+    user_id                   INT NOT NULL,
+    category                  VARCHAR(40) NOT NULL,
+    PRIMARY KEY (user_id, category),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
 CREATE TABLE id_verifications (
-    verification_id            INT AUTO_INCREMENT PRIMARY KEY,
-    verification_user_id       INT NOT NULL,
-    verification_id_type       VARCHAR(40),                      -- ADDED (National ID, Driver's License, Passport...)
-    verification_id_file_path  VARCHAR(255) NOT NULL,
-    verification_selfie_path   VARCHAR(255),                     -- ADDED (face photo from the camera, compared with the ID)
-    verification_status        ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING',
-    verification_reviewed_by   INT NULL,                         -- the admin who checked it
-    verification_reviewed_at   DATETIME NULL,
-    FOREIGN KEY (verification_user_id)     REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (verification_reviewed_by) REFERENCES users(user_id) ON DELETE SET NULL
+    verification_id           INT AUTO_INCREMENT PRIMARY KEY,
+    user_id                   INT NOT NULL,
+    id_type                   VARCHAR(40),                                                  -- ADDED (National ID, Driver's License, Passport...)
+    id_photo_path             VARCHAR(255) NOT NULL,
+    selfie_path               VARCHAR(255),                                                 -- ADDED (face photo from the camera, compared with the ID)
+    status                    ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING',
+    reviewed_by               INT NULL,                                                     -- the admin who checked it
+    reviewed_at               DATETIME NULL,
+    FOREIGN KEY (user_id)     REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_by) REFERENCES users(user_id) ON DELETE SET NULL
 );
 
 -- an "activity" is a travel group / trip
 CREATE TABLE activities (
     activity_id               INT AUTO_INCREMENT PRIMARY KEY,
-    activity_organizer_id     INT NOT NULL,
-    activity_title            VARCHAR(120) NOT NULL,
-    activity_category         VARCHAR(40)  NOT NULL,             -- Hiking, Beach, Food trip ...
-    activity_description      TEXT,
-    activity_destination      VARCHAR(120) NOT NULL,
-    activity_start_date       DATE NOT NULL,
-    activity_end_date         DATE NOT NULL,
-    activity_difficulty       ENUM('EASY','MODERATE','HARD') NOT NULL DEFAULT 'EASY',
-    activity_price_per_person DECIMAL(10,2) NOT NULL,            -- estimated budget per person
-    activity_max_participants INT NOT NULL,
-    activity_status           ENUM('OPEN','CANCELLED') NOT NULL DEFAULT 'OPEN',   -- full / completed are computed
-    activity_meeting_place    VARCHAR(200),                      -- ADDED
-    activity_meeting_time     TIME,                              -- ADDED
-    activity_transport_mode   VARCHAR(60),                       -- ADDED
-    activity_notes            TEXT,                              -- ADDED (notes from the organizer)
-    activity_image_path       VARCHAR(255),                      -- ADDED (cover photo)
-    activity_latitude         DECIMAL(9,6),                      -- ADDED (map pin of the destination)
-    activity_longitude        DECIMAL(9,6),                      -- ADDED (map pin of the destination)
-    activity_created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,   -- ADDED (sort by newest, analytics)
-    FOREIGN KEY (activity_organizer_id) REFERENCES users(user_id),
-    CHECK (activity_end_date >= activity_start_date),
-    CHECK (activity_max_participants >= 2),
-    CHECK (activity_price_per_person > 0)
+    user_id                   INT NOT NULL,
+    title                     VARCHAR(120) NOT NULL,
+    category                  VARCHAR(40)  NOT NULL,                                        -- Hiking, Beach, Food trip ...
+    description               TEXT,
+    destination               VARCHAR(120) NOT NULL,
+    start_date                DATE NOT NULL,
+    end_date                  DATE NOT NULL,
+    difficulty                ENUM('EASY','MODERATE','HARD') NOT NULL DEFAULT 'EASY',
+    price_per_person          DECIMAL(10,2) NOT NULL,                                       -- estimated budget per person
+    max_participants          INT NOT NULL,
+    status                    ENUM('OPEN','CANCELLED') NOT NULL DEFAULT 'OPEN',             -- full / completed are computed
+    meeting_place             VARCHAR(200),                                                 -- ADDED
+    meeting_time              TIME,                                                         -- ADDED
+    transport_mode            VARCHAR(60),                                                  -- ADDED
+    notes                     TEXT,                                                         -- ADDED (notes from the organizer)
+    image_path                VARCHAR(255),                                                 -- ADDED (cover photo)
+    latitude                  DECIMAL(9,6),                                                 -- ADDED (map pin of the destination)
+    longitude                 DECIMAL(9,6),                                                 -- ADDED (map pin of the destination)
+    meeting_latitude          DECIMAL(9,6),                                                 -- ADDED (map pin of the meeting place: "groups near you")
+    meeting_longitude         DECIMAL(9,6),                                                 -- ADDED
+    created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,                  -- ADDED (sort by newest, analytics)
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    CONSTRAINT chk_activities_dates        CHECK (end_date >= start_date),
+    CONSTRAINT chk_activities_participants CHECK (max_participants >= 2),
+    CONSTRAINT chk_activities_price        CHECK (price_per_person > 0)
 );
 
 CREATE TABLE itinerary (
     itinerary_id              INT AUTO_INCREMENT PRIMARY KEY,
-    itinerary_activity_id     INT NOT NULL,
-    itinerary_activity_name   VARCHAR(150) NOT NULL,
-    itinerary_location        VARCHAR(150),
-    itinerary_scheduled_time  DATETIME NOT NULL,
-    itinerary_details         VARCHAR(500),
-    FOREIGN KEY (itinerary_activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE
+    activity_id               INT NOT NULL,
+    activity_name             VARCHAR(150) NOT NULL,
+    location                  VARCHAR(150),
+    scheduled_time            DATETIME NOT NULL,
+    details                   VARCHAR(500),
+    FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE
 );
 
 CREATE TABLE activity_expenses (
     expense_id                INT AUTO_INCREMENT PRIMARY KEY,
-    expense_activity_id       INT NOT NULL,
-    expense_name              VARCHAR(120) NOT NULL,
-    expense_estimated_amount  DECIMAL(10,2) NOT NULL,            -- per person
-    FOREIGN KEY (expense_activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE
+    activity_id               INT NOT NULL,
+    name                      VARCHAR(120) NOT NULL,
+    estimated_amount          DECIMAL(10,2) NOT NULL,                                       -- per person
+    FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE
 );
 
 -- a booking is a request to join a trip. APPROVED bookings are the members.
 CREATE TABLE bookings (
-    booking_id               INT AUTO_INCREMENT PRIMARY KEY,
-    booking_user_id          INT NOT NULL,
-    booking_activity_id      INT NOT NULL,
-    booking_request_message  VARCHAR(500),
-    booking_status           ENUM('PENDING','APPROVED','REJECTED','CANCELLED','LEFT') NOT NULL DEFAULT 'PENDING',
-    booking_requested_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (booking_user_id)     REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (booking_activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE
+    booking_id                INT AUTO_INCREMENT PRIMARY KEY,
+    user_id                   INT NOT NULL,
+    activity_id               INT NOT NULL,
+    request_message           VARCHAR(500),
+    status                    ENUM('PENDING','APPROVED','REJECTED','CANCELLED','LEFT') NOT NULL DEFAULT 'PENDING',
+    requested_at              DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id)     REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE
 );
 
 CREATE TABLE group_messages (
-    message_id               INT AUTO_INCREMENT PRIMARY KEY,
-    message_activity_id      INT NOT NULL,
-    message_sender_id        INT NOT NULL,
-    message_content          TEXT NOT NULL,
-    message_is_announcement  BOOLEAN NOT NULL DEFAULT FALSE,     -- ADDED (trip updates from the organizer)
-    message_sent_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (message_activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE,
-    FOREIGN KEY (message_sender_id)   REFERENCES users(user_id) ON DELETE CASCADE
+    message_id                INT AUTO_INCREMENT PRIMARY KEY,
+    activity_id               INT NOT NULL,
+    user_id                   INT NOT NULL,
+    content                   TEXT NOT NULL,
+    is_announcement           BOOLEAN NOT NULL DEFAULT FALSE,                               -- ADDED (trip updates from the organizer)
+    sent_at                   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id)   REFERENCES users(user_id) ON DELETE CASCADE
 );
 
 -- ADDED: private messages, e.g. contacting the group organizer
 CREATE TABLE direct_messages (
-    dm_id           INT AUTO_INCREMENT PRIMARY KEY,
-    dm_sender_id    INT NOT NULL,
-    dm_receiver_id  INT NOT NULL,
-    dm_content      TEXT NOT NULL,
-    dm_sent_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (dm_sender_id)   REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (dm_receiver_id) REFERENCES users(user_id) ON DELETE CASCADE
+    dm_id                     INT AUTO_INCREMENT PRIMARY KEY,
+    user_id                   INT NOT NULL,
+    receiver_id               INT NOT NULL,
+    content                   TEXT NOT NULL,
+    sent_at                   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_read                   BOOLEAN NOT NULL DEFAULT FALSE,                               -- ADDED (unread badge on Messages)
+    FOREIGN KEY (user_id)   REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (receiver_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- ADDED: the last group message each member has seen, so the app knows what is unread
+CREATE TABLE chat_reads (
+    user_id                   INT NOT NULL,
+    activity_id               INT NOT NULL,
+    last_read_message_id      INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, activity_id),
+    FOREIGN KEY (user_id)     REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE
 );
 
 -- What was reported is the one id that is filled in: a user, an activity, or one group message.
 CREATE TABLE reports (
-    report_id                INT AUTO_INCREMENT PRIMARY KEY,
-    report_reporter_id       INT NOT NULL,
-    report_reported_user_id  INT NULL,
-    report_activity_id       INT NULL,
-    report_message_id        INT NULL,                           -- ADDED (a reported group message)
-    report_reason            VARCHAR(100) NOT NULL,
-    report_details           TEXT,                               -- ADDED
-    report_status            ENUM('PENDING','UNDER_REVIEW','RESOLVED','DISMISSED') NOT NULL DEFAULT 'PENDING',
-    report_action_taken      VARCHAR(100),                       -- ADDED
-    report_reviewed_by       INT NULL,
-    report_reviewed_at       DATETIME NULL,                      -- ADDED
-    report_created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,   -- ADDED
-    FOREIGN KEY (report_reporter_id)      REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (report_reported_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
-    FOREIGN KEY (report_activity_id)      REFERENCES activities(activity_id) ON DELETE SET NULL,
-    FOREIGN KEY (report_message_id)       REFERENCES group_messages(message_id) ON DELETE SET NULL,
-    FOREIGN KEY (report_reviewed_by)      REFERENCES users(user_id) ON DELETE SET NULL
+    report_id                 INT AUTO_INCREMENT PRIMARY KEY,
+    user_id                   INT NOT NULL,
+    reported_user_id          INT NULL,
+    activity_id               INT NULL,
+    message_id                INT NULL,                                                     -- ADDED (a reported group message)
+    reason                    VARCHAR(100) NOT NULL,
+    details                   TEXT,                                                         -- ADDED
+    status                    ENUM('PENDING','UNDER_REVIEW','RESOLVED','DISMISSED') NOT NULL DEFAULT 'PENDING',
+    action_taken              VARCHAR(100),                                                 -- ADDED
+    reviewed_by               INT NULL,
+    reviewed_at               DATETIME NULL,                                                -- ADDED
+    created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,                  -- ADDED
+    FOREIGN KEY (user_id)      REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (reported_user_id) REFERENCES users(user_id) ON DELETE SET NULL,
+    FOREIGN KEY (activity_id)      REFERENCES activities(activity_id) ON DELETE SET NULL,
+    FOREIGN KEY (message_id)       REFERENCES group_messages(message_id) ON DELETE SET NULL,
+    FOREIGN KEY (reviewed_by)      REFERENCES users(user_id) ON DELETE SET NULL
 );
 
--- review_reviewed_user_id NULL = a review of the trip itself
+-- reviewed_user_id NULL = a review of the trip itself
 CREATE TABLE reviews (
-    review_id                INT AUTO_INCREMENT PRIMARY KEY,
-    review_booking_id        INT NOT NULL,                       -- the reviewer and the trip come from here
-    review_reviewed_user_id  INT NULL,
-    review_rating            TINYINT NOT NULL CHECK (review_rating BETWEEN 1 AND 5),
-    review_comment           VARCHAR(1000),
-    review_created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (review_booking_id)       REFERENCES bookings(booking_id) ON DELETE CASCADE,
-    FOREIGN KEY (review_reviewed_user_id) REFERENCES users(user_id) ON DELETE CASCADE
+    review_id                 INT AUTO_INCREMENT PRIMARY KEY,
+    booking_id                INT NOT NULL,                                                 -- the reviewer and the trip come from here
+    reviewed_user_id          INT NULL,
+    rating                    TINYINT NOT NULL CONSTRAINT chk_reviews_rating CHECK (rating BETWEEN 1 AND 5),
+    comment                   VARCHAR(1000),
+    created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (booking_id)       REFERENCES bookings(booking_id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
 CREATE TABLE blocked_users (
-    block_id               INT AUTO_INCREMENT PRIMARY KEY,
-    block_blocker_id       INT NOT NULL,
-    block_blocked_user_id  INT NOT NULL,
-    block_created_at       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (block_blocker_id, block_blocked_user_id),
-    FOREIGN KEY (block_blocker_id)      REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (block_blocked_user_id) REFERENCES users(user_id) ON DELETE CASCADE
+    block_id                  INT AUTO_INCREMENT PRIMARY KEY,
+    user_id                   INT NOT NULL,
+    blocked_user_id           INT NOT NULL,
+    created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, blocked_user_id),
+    FOREIGN KEY (user_id)      REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (blocked_user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
 -- ADDED: request approved / rejected, new join requests, trip updates
 CREATE TABLE notifications (
     notification_id           INT AUTO_INCREMENT PRIMARY KEY,
-    notification_user_id      INT NOT NULL,
-    notification_message      VARCHAR(500) NOT NULL,
-    notification_activity_id  INT NULL,
-    notification_is_read      BOOLEAN NOT NULL DEFAULT FALSE,
-    notification_created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (notification_user_id)     REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (notification_activity_id) REFERENCES activities(activity_id) ON DELETE SET NULL
+    user_id                   INT NOT NULL,
+    message                   VARCHAR(500) NOT NULL,
+    activity_id               INT NULL,
+    is_read                   BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id)     REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE SET NULL
 );
 
 -- ADDED: record of every admin action (ID checks, suspensions, cancelled trips, announcements...)
 CREATE TABLE admin_logs (
-    log_id          INT AUTO_INCREMENT PRIMARY KEY,
-    log_admin_id    INT NULL,
-    log_action      VARCHAR(40)  NOT NULL,
-    log_target      VARCHAR(150),
-    log_details     VARCHAR(500),
-    log_created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (log_admin_id) REFERENCES users(user_id) ON DELETE SET NULL
+    log_id                    INT AUTO_INCREMENT PRIMARY KEY,
+    user_id                   INT NULL,
+    action                    VARCHAR(40)  NOT NULL,
+    target                    VARCHAR(150),
+    details                   VARCHAR(500),
+    created_at                DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_activities_dates   ON activities(activity_status, activity_end_date, activity_start_date);
-CREATE INDEX idx_bookings_activity  ON bookings(booking_activity_id, booking_status);
-CREATE INDEX idx_bookings_user      ON bookings(booking_user_id, booking_status);
-CREATE INDEX idx_messages_activity  ON group_messages(message_activity_id, message_sent_at);
-CREATE INDEX idx_dm_pair            ON direct_messages(dm_sender_id, dm_receiver_id, dm_sent_at);
-CREATE INDEX idx_reports_status     ON reports(report_status, report_created_at);
-CREATE INDEX idx_notifications_user ON notifications(notification_user_id, notification_is_read);
+CREATE INDEX idx_activities_dates   ON activities(status, end_date, start_date);
+CREATE INDEX idx_bookings_activity  ON bookings(activity_id, status);
+CREATE INDEX idx_bookings_user      ON bookings(user_id, status);
+CREATE INDEX idx_messages_activity  ON group_messages(activity_id, sent_at);
+CREATE INDEX idx_dm_pair            ON direct_messages(user_id, receiver_id, sent_at);
+CREATE INDEX idx_reports_status     ON reports(status, created_at);
+CREATE INDEX idx_notifications_user ON notifications(user_id, is_read);
 
 -- =====================================================================
 --  SAMPLE DATA (dates are relative to today, so trips stay "upcoming")
 --  Every sample traveler's password is 1234. Admin: admin1234.
 -- =====================================================================
 
-INSERT INTO users (user_id, user_full_name, user_email, user_password, user_phone, user_profile_picture, user_role, user_account_status, user_created_at) VALUES
+INSERT INTO users (user_id, full_name, email, password_hash, phone, profile_picture, role, account_status, created_at) VALUES
 (1, 'Juan Dela Cruz', 'juan@sabaylakbay.com', SHA2('1234', 256), '0917 000 0001', NULL, 'TRAVELER', 'ACTIVE', DATE_SUB(NOW(), INTERVAL 28800 MINUTE)),
 (2, 'Mark Santos', 'mark@sabaylakbay.com', SHA2('1234', 256), '0917 000 0002', NULL, 'TRAVELER', 'ACTIVE', DATE_SUB(NOW(), INTERVAL 53280 MINUTE)),
 (3, 'Ana Reyes', 'ana@sabaylakbay.com', SHA2('1234', 256), '0917 000 0003', NULL, 'TRAVELER', 'ACTIVE', DATE_SUB(NOW(), INTERVAL 77760 MINUTE)),
@@ -291,7 +305,7 @@ INSERT INTO users (user_id, user_full_name, user_email, user_password, user_phon
 (99, 'Admin Team', 'admin@sabaylakbay.com', SHA2('admin1234', 256), '0917 000 0099', NULL, 'ADMIN', 'ACTIVE', DATE_SUB(NOW(), INTERVAL 576000 MINUTE));
 
 -- ID checks (the sample files don't exist, the admin screen shows a placeholder)
-INSERT INTO id_verifications (verification_user_id, verification_id_file_path, verification_status, verification_reviewed_by, verification_reviewed_at) VALUES
+INSERT INTO id_verifications (user_id, id_photo_path, status, reviewed_by, reviewed_at) VALUES
 (1, 'uploads/ids/sample-id-1.jpg', 'APPROVED', 99, DATE_SUB(NOW(), INTERVAL 1440 MINUTE)),
 (2, 'uploads/ids/sample-id-2.jpg', 'APPROVED', 99, DATE_SUB(NOW(), INTERVAL 1440 MINUTE)),
 (3, 'uploads/ids/sample-id-3.jpg', 'APPROVED', 99, DATE_SUB(NOW(), INTERVAL 1440 MINUTE)),
@@ -354,7 +368,7 @@ INSERT INTO id_verifications (verification_user_id, verification_id_file_path, v
 (60, 'uploads/ids/sample-id-60.jpg', 'PENDING', NULL, NULL);
 
 -- activities 1-8 are the main sample trips, 9+ are completed trips from the past year
-INSERT INTO activities (activity_id, activity_organizer_id, activity_title, activity_category, activity_description, activity_destination, activity_start_date, activity_end_date, activity_difficulty, activity_price_per_person, activity_max_participants, activity_meeting_place, activity_meeting_time, activity_transport_mode, activity_notes, activity_image_path, activity_created_at) VALUES
+INSERT INTO activities (activity_id, user_id, title, category, description, destination, start_date, end_date, difficulty, price_per_person, max_participants, meeting_place, meeting_time, transport_mode, notes, image_path, created_at) VALUES
 (1, 2, 'Mt. Mayon Adventure', 'Hiking', 'Three days around Mayon: Cagsawa Ruins, Lignon Hill, ATV lava trail and Bicol food trip.', 'Albay', DATE_ADD(CURDATE(), INTERVAL 10 DAY), DATE_ADD(CURDATE(), INTERVAL 12 DAY), 'MODERATE', 1600, 10, 'Cubao Bus Terminal, Quezon City', '20:00:00', 'Bus', 'Bring a light jacket and comfy shoes. Budget covers bus, ATV and lodging. Food is separate.', '/images/mayon.jpg', DATE_SUB(NOW(), INTERVAL 4320 MINUTE)),
 (2, 3, 'Island Hopping - Caramoan', 'Beach', 'Hop around Caramoan''s islands: Matukad, Lahos and Sabitang Laya. Snorkeling and beach camping.', 'Camarines Sur', DATE_ADD(CURDATE(), INTERVAL 19 DAY), DATE_ADD(CURDATE(), INTERVAL 22 DAY), 'EASY', 1200, 8, 'Naga City Plaza', '05:00:00', 'Van + Boat', 'Waterproof bag is a must. Bring your own snorkel if you have one.', '/images/caramoan.jpg', DATE_SUB(NOW(), INTERVAL 1440 MINUTE)),
 (3, 4, 'Trekking + Falls', 'Hiking', 'Day hike to Daranak and Batlag Falls with a short trek. Beginner friendly.', 'Tanay, Rizal', DATE_ADD(CURDATE(), INTERVAL 6 DAY), DATE_ADD(CURDATE(), INTERVAL 6 DAY), 'EASY', 900, 6, 'Starmall EDSA Shaw, Mandaluyong', '04:30:00', 'Van', 'Wear trekking sandals. We leave on time, so please be early.', '/images/falls.jpg', DATE_SUB(NOW(), INTERVAL 7200 MINUTE)),
@@ -420,19 +434,28 @@ INSERT INTO activities (activity_id, activity_organizer_id, activity_title, acti
 (63, 3, 'Mayon Day Tour', 'Hiking', 'Past trip.', 'Albay', DATE_SUB(CURDATE(), INTERVAL 2 DAY), DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'MODERATE', 2500, 8, 'Meet-up point sent in the group chat', '05:00:00', 'Bus', 'Thanks for joining!', NULL, DATE_SUB(NOW(), INTERVAL 23040 MINUTE));
 
 -- map pins for the sample trips
-UPDATE activities SET activity_latitude = 13.257200, activity_longitude = 123.685600 WHERE activity_destination = 'Albay';
-UPDATE activities SET activity_latitude = 11.998600, activity_longitude = 120.204300 WHERE activity_destination = 'Palawan';
-UPDATE activities SET activity_latitude = 9.784000, activity_longitude = 126.157700 WHERE activity_destination = 'Surigao del Norte';
-UPDATE activities SET activity_latitude = 16.402300, activity_longitude = 120.596000 WHERE activity_destination = 'Benguet';
-UPDATE activities SET activity_latitude = 14.519700, activity_longitude = 121.304400 WHERE activity_destination = 'Tanay, Rizal';
-UPDATE activities SET activity_latitude = 9.947500, activity_longitude = 123.367500 WHERE activity_destination = 'Cebu';
-UPDATE activities SET activity_latitude = 20.448700, activity_longitude = 121.970200 WHERE activity_destination = 'Batanes';
-UPDATE activities SET activity_latitude = 9.829700, activity_longitude = 124.139700 WHERE activity_destination = 'Bohol';
-UPDATE activities SET activity_latitude = 13.770600, activity_longitude = 123.863300 WHERE activity_destination = 'Camarines Sur';
-UPDATE activities SET activity_latitude = 18.561700, activity_longitude = 120.785400 WHERE activity_destination = 'Ilocos Norte';
+UPDATE activities SET latitude = 13.257200, longitude = 123.685600 WHERE destination = 'Albay';
+UPDATE activities SET latitude = 11.998600, longitude = 120.204300 WHERE destination = 'Palawan';
+UPDATE activities SET latitude = 9.784000, longitude = 126.157700 WHERE destination = 'Surigao del Norte';
+UPDATE activities SET latitude = 16.402300, longitude = 120.596000 WHERE destination = 'Benguet';
+UPDATE activities SET latitude = 14.519700, longitude = 121.304400 WHERE destination = 'Tanay, Rizal';
+UPDATE activities SET latitude = 9.947500, longitude = 123.367500 WHERE destination = 'Cebu';
+UPDATE activities SET latitude = 20.448700, longitude = 121.970200 WHERE destination = 'Batanes';
+UPDATE activities SET latitude = 9.829700, longitude = 124.139700 WHERE destination = 'Bohol';
+UPDATE activities SET latitude = 13.770600, longitude = 123.863300 WHERE destination = 'Camarines Sur';
+UPDATE activities SET latitude = 18.561700, longitude = 120.785400 WHERE destination = 'Ilocos Norte';
+
+-- map pins of the meeting places (used for "Groups near you")
+UPDATE activities SET meeting_latitude = 14.619500, meeting_longitude = 121.053200 WHERE meeting_place = 'Cubao Bus Terminal, Quezon City';
+UPDATE activities SET meeting_latitude = 13.624800, meeting_longitude = 123.185900 WHERE meeting_place = 'Naga City Plaza';
+UPDATE activities SET meeting_latitude = 14.581000, meeting_longitude = 121.053800 WHERE meeting_place = 'Starmall EDSA Shaw, Mandaluyong';
+UPDATE activities SET meeting_latitude = 14.520300, meeting_longitude = 121.014400 WHERE meeting_place = 'NAIA Terminal 3';
+UPDATE activities SET meeting_latitude = 14.511400, meeting_longitude = 121.019300 WHERE meeting_place = 'NAIA Terminal 2';
+UPDATE activities SET meeting_latitude = 14.656600, meeting_longitude = 121.029600 WHERE meeting_place = 'SM North EDSA, The Block entrance';
+UPDATE activities SET meeting_latitude = 14.657800, meeting_longitude = 121.000300 WHERE meeting_place = 'NLEX Balintawak Toll Plaza';
 
 -- bookings: APPROVED ones are the members of a trip (the organizer is a member without a booking)
-INSERT INTO bookings (booking_id, booking_user_id, booking_activity_id, booking_request_message, booking_status, booking_requested_at) VALUES
+INSERT INTO bookings (booking_id, user_id, activity_id, request_message, status, requested_at) VALUES
 (1, 5, 1, NULL, 'APPROVED', DATE_SUB(NOW(), INTERVAL 4200 MINUTE)),
 (2, 6, 1, NULL, 'APPROVED', DATE_SUB(NOW(), INTERVAL 4140 MINUTE)),
 (3, 7, 1, NULL, 'APPROVED', DATE_SUB(NOW(), INTERVAL 4080 MINUTE)),
@@ -721,7 +744,7 @@ INSERT INTO bookings (booking_id, booking_user_id, booking_activity_id, booking_
 (286, 8, 4, 'Hi, I''m from QC too. Can I join?', 'PENDING', DATE_SUB(NOW(), INTERVAL 300 MINUTE)),
 (287, 7, 4, 'Looks fun! I love cafes.', 'PENDING', DATE_SUB(NOW(), INTERVAL 120 MINUTE));
 
-INSERT INTO itinerary (itinerary_activity_id, itinerary_activity_name, itinerary_location, itinerary_scheduled_time, itinerary_details) VALUES
+INSERT INTO itinerary (activity_id, activity_name, location, scheduled_time, details) VALUES
 (3, 'Meet up and leave Manila', 'Starmall EDSA Shaw', DATE_ADD(CURDATE(), INTERVAL 8910 MINUTE), 'Van leaves 4:45 sharp.'),
 (3, 'Breakfast', 'Tanay Public Market', DATE_ADD(CURDATE(), INTERVAL 9060 MINUTE), NULL),
 (3, 'Trek to Daranak Falls', 'Daranak Falls', DATE_ADD(CURDATE(), INTERVAL 9150 MINUTE), 'Easy 30-minute trail.'),
@@ -734,7 +757,7 @@ INSERT INTO itinerary (itinerary_activity_id, itinerary_activity_name, itinerary
 (4, 'Night market', 'Harrison Road', DATE_ADD(CURDATE(), INTERVAL 38520 MINUTE), NULL),
 (7, 'Kayangan Lake tour', 'Coron Island', DATE_SUB(CURDATE(), INTERVAL 28260 MINUTE), NULL);
 
-INSERT INTO activity_expenses (expense_activity_id, expense_name, expense_estimated_amount) VALUES
+INSERT INTO activity_expenses (activity_id, name, estimated_amount) VALUES
 (3, 'Van rental (shared)', 450),
 (3, 'Entrance fees', 180),
 (3, 'Food', 270),
@@ -744,7 +767,7 @@ INSERT INTO activity_expenses (expense_activity_id, expense_name, expense_estima
 (7, 'Flights', 3500),
 (7, 'Tours and boat', 1700);
 
-INSERT INTO group_messages (message_id, message_activity_id, message_sender_id, message_content, message_is_announcement, message_sent_at) VALUES
+INSERT INTO group_messages (message_id, activity_id, user_id, content, is_announcement, sent_at) VALUES
 (1, 3, 4, 'Hi everyone! Welcome to Trekking + Falls.', FALSE, DATE_SUB(NOW(), INTERVAL 5760 MINUTE)),
 (2, 3, 1, 'Hello! Excited for this.', FALSE, DATE_SUB(NOW(), INTERVAL 5700 MINUTE)),
 (3, 3, 6, 'Same here. Should I bring a dry bag?', FALSE, DATE_SUB(NOW(), INTERVAL 4320 MINUTE)),
@@ -755,12 +778,13 @@ INSERT INTO group_messages (message_id, message_activity_id, message_sender_id, 
 (8, 7, 7, 'Thanks for joining Coron, guys! Please leave a review.', TRUE, DATE_SUB(NOW(), INTERVAL 23040 MINUTE)),
 (9, 2, 12, 'Pay me first through GCash so I can lock your slot. Don''t tell the organizer.', FALSE, DATE_SUB(NOW(), INTERVAL 2880 MINUTE));
 
-INSERT INTO direct_messages (dm_sender_id, dm_receiver_id, dm_content, dm_sent_at) VALUES
-(2, 1, 'Hi Juan! Saw your request on Batanes. Want to join Mayon instead? We still have slots.', DATE_SUB(NOW(), INTERVAL 2880 MINUTE)),
-(1, 2, 'Oh nice, I''ll check it out. Thanks Mark!', DATE_SUB(NOW(), INTERVAL 2760 MINUTE));
+INSERT INTO direct_messages (user_id, receiver_id, content, sent_at, is_read) VALUES
+(2, 1, 'Hi Juan! Saw your request on Batanes. Want to join Mayon instead? We still have slots.', DATE_SUB(NOW(), INTERVAL 2880 MINUTE), TRUE),
+(1, 2, 'Oh nice, I''ll check it out. Thanks Mark!', DATE_SUB(NOW(), INTERVAL 2760 MINUTE), TRUE),
+(3, 1, 'Hey Juan! Are you joining Caramoan? We need one more for the boat.', DATE_SUB(NOW(), INTERVAL 25 MINUTE), FALSE);
 
--- reviews: review_reviewed_user_id NULL = review of the trip itself
-INSERT INTO reviews (review_booking_id, review_reviewed_user_id, review_rating, review_comment, review_created_at) VALUES
+-- reviews: reviewed_user_id NULL = review of the trip itself
+INSERT INTO reviews (booking_id, reviewed_user_id, rating, comment, created_at) VALUES
 (21, 1, 4, 'Fun to be with, good photos.', DATE_SUB(NOW(), INTERVAL 21600 MINUTE)),
 (22, 1, 5, 'Super chill and always on time. Would travel again!', DATE_SUB(NOW(), INTERVAL 21600 MINUTE)),
 (22, NULL, 5, 'Well planned trip, Mika did a great job.', DATE_SUB(NOW(), INTERVAL 23040 MINUTE)),
@@ -877,7 +901,7 @@ INSERT INTO reviews (review_booking_id, review_reviewed_user_id, review_rating, 
 (280, 3, 5, 'Great organizer, very responsive.', DATE_SUB(NOW(), INTERVAL 1440 MINUTE));
 
 -- reports: the filled-in id says what was reported (user, activity or message)
-INSERT INTO reports (report_reporter_id, report_reported_user_id, report_activity_id, report_message_id, report_reason, report_details, report_status, report_action_taken, report_created_at, report_reviewed_at, report_reviewed_by) VALUES
+INSERT INTO reports (user_id, reported_user_id, activity_id, message_id, reason, details, status, action_taken, created_at, reviewed_at, reviewed_by) VALUES
 (3, 12, NULL, NULL, 'Scam or fraud', 'He asked members to send money to his own GCash before the trip.', 'PENDING', NULL, DATE_SUB(NOW(), INTERVAL 360 MINUTE), NULL, NULL),
 (5, NULL, NULL, 9, 'Scam or fraud', 'This message in the Caramoan group chat asks for payment outside the group.', 'UNDER_REVIEW', NULL, DATE_SUB(NOW(), INTERVAL 1440 MINUTE), DATE_SUB(NOW(), INTERVAL 1140 MINUTE), 99),
 (9, NULL, 6, NULL, 'Fake profile or group', 'Price looks too low for Batanes, not sure if this is real.', 'PENDING', NULL, DATE_SUB(NOW(), INTERVAL 2880 MINUTE), NULL, NULL),
@@ -904,7 +928,7 @@ INSERT INTO reports (report_reporter_id, report_reported_user_id, report_activit
 (20, 60, NULL, NULL, 'Scam or fraud', 'Older report.', 'DISMISSED', 'No action needed', DATE_SUB(NOW(), INTERVAL 89280 MINUTE), DATE_SUB(NOW(), INTERVAL 87840 MINUTE), 99),
 (54, 27, NULL, NULL, 'Inappropriate content', 'Older report.', 'DISMISSED', 'No action needed', DATE_SUB(NOW(), INTERVAL 213120 MINUTE), DATE_SUB(NOW(), INTERVAL 211680 MINUTE), 99);
 
-INSERT INTO notifications (notification_user_id, notification_message, notification_activity_id, notification_created_at, notification_is_read) VALUES
+INSERT INTO notifications (user_id, message, activity_id, created_at, is_read) VALUES
 (1, 'Your request to join "Trekking + Falls" was approved!', 3, DATE_SUB(NOW(), INTERVAL 5760 MINUTE), TRUE),
 (1, 'Your request to join "Batanes Escape" was not approved.', 6, DATE_SUB(NOW(), INTERVAL 7200 MINUTE), TRUE),
 (1, 'Trip update in "Trekking + Falls": Reminder: meet at Starmall Shaw at 4:30 AM sharp.', 3, DATE_SUB(NOW(), INTERVAL 1440 MINUTE), FALSE),
@@ -912,67 +936,67 @@ INSERT INTO notifications (notification_user_id, notification_message, notificat
 (1, 'Mika Tan wants to join "Baguio Food Trip".', 4, DATE_SUB(NOW(), INTERVAL 120 MINUTE), FALSE);
 
 -- home locations and interests of the sample travelers
-UPDATE users SET user_street = '12 Mapagmahal St.', user_barangay = 'Pinyahan', user_city = 'Quezon City', user_province = 'Metro Manila', user_zip_code = '1100', user_latitude = 14.676000, user_longitude = 121.043700 WHERE user_id = 1;
-UPDATE users SET user_city = 'Cebu City', user_province = 'Cebu', user_latitude = 10.298597, user_longitude = 123.886835 WHERE user_id = 2;
-UPDATE users SET user_city = 'Cebu City', user_province = 'Cebu', user_latitude = 10.313046, user_longitude = 123.868194 WHERE user_id = 3;
-UPDATE users SET user_city = 'Makati', user_province = 'Metro Manila', user_latitude = 14.539652, user_longitude = 121.013330 WHERE user_id = 4;
-UPDATE users SET user_city = 'Cavite City', user_province = 'Cavite', user_latitude = 14.460963, user_longitude = 120.911339 WHERE user_id = 5;
-UPDATE users SET user_city = 'Taguig', user_province = 'Metro Manila', user_latitude = 14.509939, user_longitude = 121.063545 WHERE user_id = 6;
-UPDATE users SET user_city = 'Manila', user_province = 'Metro Manila', user_latitude = 14.583397, user_longitude = 120.992684 WHERE user_id = 7;
-UPDATE users SET user_city = 'Antipolo City', user_province = 'Rizal', user_latitude = 14.593416, user_longitude = 121.173204 WHERE user_id = 8;
-UPDATE users SET user_city = 'Cebu City', user_province = 'Cebu', user_latitude = 10.305637, user_longitude = 123.872591 WHERE user_id = 9;
-UPDATE users SET user_city = 'Caloocan', user_province = 'Metro Manila', user_latitude = 14.651708, user_longitude = 120.981805 WHERE user_id = 10;
-UPDATE users SET user_city = 'Legazpi City', user_province = 'Albay', user_latitude = 13.139577, user_longitude = 123.730398 WHERE user_id = 11;
-UPDATE users SET user_city = 'Cebu City', user_province = 'Cebu', user_latitude = 10.297268, user_longitude = 123.892129 WHERE user_id = 12;
-UPDATE users SET user_city = 'Caloocan', user_province = 'Metro Manila', user_latitude = 14.654475, user_longitude = 120.969996 WHERE user_id = 13;
-UPDATE users SET user_city = 'Baguio City', user_province = 'Benguet', user_latitude = 16.401264, user_longitude = 120.602566 WHERE user_id = 14;
-UPDATE users SET user_city = 'Quezon City', user_province = 'Metro Manila', user_latitude = 14.671432, user_longitude = 121.050446 WHERE user_id = 15;
-UPDATE users SET user_city = 'Quezon City', user_province = 'Metro Manila', user_latitude = 14.660684, user_longitude = 121.026058 WHERE user_id = 16;
-UPDATE users SET user_city = 'Caloocan', user_province = 'Metro Manila', user_latitude = 14.646338, user_longitude = 120.981657 WHERE user_id = 17;
-UPDATE users SET user_city = 'Makati', user_province = 'Metro Manila', user_latitude = 14.556678, user_longitude = 121.039735 WHERE user_id = 18;
-UPDATE users SET user_city = 'Bacolod City', user_province = 'Negros Occidental', user_latitude = 10.673112, user_longitude = 122.945251 WHERE user_id = 19;
-UPDATE users SET user_city = 'Naga City', user_province = 'Camarines Sur', user_latitude = 13.608849, user_longitude = 123.184078 WHERE user_id = 20;
-UPDATE users SET user_city = 'Pasig', user_province = 'Metro Manila', user_latitude = 14.566910, user_longitude = 121.065264 WHERE user_id = 21;
-UPDATE users SET user_city = 'Davao City', user_province = 'Davao del Sur', user_latitude = 7.205068, user_longitude = 125.473309 WHERE user_id = 22;
-UPDATE users SET user_city = 'Cavite City', user_province = 'Cavite', user_latitude = 14.491015, user_longitude = 120.892695 WHERE user_id = 23;
-UPDATE users SET user_city = 'Davao City', user_province = 'Davao del Sur', user_latitude = 7.186718, user_longitude = 125.442924 WHERE user_id = 24;
-UPDATE users SET user_city = 'Pasig', user_province = 'Metro Manila', user_latitude = 14.580429, user_longitude = 121.069195 WHERE user_id = 25;
-UPDATE users SET user_city = 'Antipolo City', user_province = 'Rizal', user_latitude = 14.604158, user_longitude = 121.180649 WHERE user_id = 26;
-UPDATE users SET user_city = 'Makati', user_province = 'Metro Manila', user_latitude = 14.560076, user_longitude = 121.042619 WHERE user_id = 27;
-UPDATE users SET user_city = 'Antipolo City', user_province = 'Rizal', user_latitude = 14.600157, user_longitude = 121.195824 WHERE user_id = 28;
-UPDATE users SET user_city = 'Baguio City', user_province = 'Benguet', user_latitude = 16.388065, user_longitude = 120.605987 WHERE user_id = 29;
-UPDATE users SET user_city = 'Legazpi City', user_province = 'Albay', user_latitude = 13.120024, user_longitude = 123.761839 WHERE user_id = 30;
-UPDATE users SET user_city = 'Iloilo City', user_province = 'Iloilo', user_latitude = 10.721324, user_longitude = 122.581240 WHERE user_id = 31;
-UPDATE users SET user_city = 'Bacolod City', user_province = 'Negros Occidental', user_latitude = 10.692830, user_longitude = 122.945128 WHERE user_id = 32;
-UPDATE users SET user_city = 'Pasig', user_province = 'Metro Manila', user_latitude = 14.580929, user_longitude = 121.096636 WHERE user_id = 33;
-UPDATE users SET user_city = 'Caloocan', user_province = 'Metro Manila', user_latitude = 14.660295, user_longitude = 120.955870 WHERE user_id = 34;
-UPDATE users SET user_city = 'Iloilo City', user_province = 'Iloilo', user_latitude = 10.731805, user_longitude = 122.560990 WHERE user_id = 35;
-UPDATE users SET user_city = 'Pasig', user_province = 'Metro Manila', user_latitude = 14.595922, user_longitude = 121.103300 WHERE user_id = 36;
-UPDATE users SET user_city = 'Cebu City', user_province = 'Cebu', user_latitude = 10.304774, user_longitude = 123.873268 WHERE user_id = 37;
-UPDATE users SET user_city = 'Pasig', user_province = 'Metro Manila', user_latitude = 14.570160, user_longitude = 121.090825 WHERE user_id = 38;
-UPDATE users SET user_city = 'Bacolod City', user_province = 'Negros Occidental', user_latitude = 10.686506, user_longitude = 122.950021 WHERE user_id = 39;
-UPDATE users SET user_city = 'Manila', user_province = 'Metro Manila', user_latitude = 14.617347, user_longitude = 120.993073 WHERE user_id = 40;
-UPDATE users SET user_city = 'Baguio City', user_province = 'Benguet', user_latitude = 16.422024, user_longitude = 120.577102 WHERE user_id = 41;
-UPDATE users SET user_city = 'Antipolo City', user_province = 'Rizal', user_latitude = 14.603699, user_longitude = 121.162336 WHERE user_id = 42;
-UPDATE users SET user_city = 'Iloilo City', user_province = 'Iloilo', user_latitude = 10.732174, user_longitude = 122.571155 WHERE user_id = 43;
-UPDATE users SET user_city = 'Makati', user_province = 'Metro Manila', user_latitude = 14.567746, user_longitude = 121.012842 WHERE user_id = 44;
-UPDATE users SET user_city = 'Taguig', user_province = 'Metro Manila', user_latitude = 14.528147, user_longitude = 121.043940 WHERE user_id = 45;
-UPDATE users SET user_city = 'Iloilo City', user_province = 'Iloilo', user_latitude = 10.714351, user_longitude = 122.560426 WHERE user_id = 46;
-UPDATE users SET user_city = 'Antipolo City', user_province = 'Rizal', user_latitude = 14.587140, user_longitude = 121.156848 WHERE user_id = 47;
-UPDATE users SET user_city = 'Baguio City', user_province = 'Benguet', user_latitude = 16.389194, user_longitude = 120.594940 WHERE user_id = 48;
-UPDATE users SET user_city = 'Legazpi City', user_province = 'Albay', user_latitude = 13.132139, user_longitude = 123.744534 WHERE user_id = 49;
-UPDATE users SET user_city = 'Iloilo City', user_province = 'Iloilo', user_latitude = 10.707852, user_longitude = 122.543788 WHERE user_id = 50;
-UPDATE users SET user_city = 'Makati', user_province = 'Metro Manila', user_latitude = 14.552430, user_longitude = 121.028901 WHERE user_id = 51;
-UPDATE users SET user_city = 'Iloilo City', user_province = 'Iloilo', user_latitude = 10.718294, user_longitude = 122.563431 WHERE user_id = 52;
-UPDATE users SET user_city = 'Baguio City', user_province = 'Benguet', user_latitude = 16.415900, user_longitude = 120.581485 WHERE user_id = 53;
-UPDATE users SET user_city = 'Makati', user_province = 'Metro Manila', user_latitude = 14.561546, user_longitude = 121.021534 WHERE user_id = 54;
-UPDATE users SET user_city = 'Pasig', user_province = 'Metro Manila', user_latitude = 14.593980, user_longitude = 121.090838 WHERE user_id = 55;
-UPDATE users SET user_city = 'Cebu City', user_province = 'Cebu', user_latitude = 10.334402, user_longitude = 123.874184 WHERE user_id = 56;
-UPDATE users SET user_city = 'Makati', user_province = 'Metro Manila', user_latitude = 14.567998, user_longitude = 121.010859 WHERE user_id = 57;
-UPDATE users SET user_city = 'Davao City', user_province = 'Davao del Sur', user_latitude = 7.184965, user_longitude = 125.438988 WHERE user_id = 58;
-UPDATE users SET user_city = 'Cebu City', user_province = 'Cebu', user_latitude = 10.313318, user_longitude = 123.866123 WHERE user_id = 59;
-UPDATE users SET user_city = 'Cebu City', user_province = 'Cebu', user_latitude = 10.334568, user_longitude = 123.869591 WHERE user_id = 60;
-INSERT INTO user_interests (user_interest_user_id, user_interest_category) VALUES
+UPDATE users SET street = '12 Mapagmahal St.', barangay = 'Pinyahan', city = 'Quezon City', province = 'Metro Manila', zip_code = '1100', latitude = 14.676000, longitude = 121.043700 WHERE user_id = 1;
+UPDATE users SET city = 'Cebu City', province = 'Cebu', latitude = 10.298597, longitude = 123.886835 WHERE user_id = 2;
+UPDATE users SET city = 'Cebu City', province = 'Cebu', latitude = 10.313046, longitude = 123.868194 WHERE user_id = 3;
+UPDATE users SET city = 'Makati', province = 'Metro Manila', latitude = 14.539652, longitude = 121.013330 WHERE user_id = 4;
+UPDATE users SET city = 'Cavite City', province = 'Cavite', latitude = 14.460963, longitude = 120.911339 WHERE user_id = 5;
+UPDATE users SET city = 'Taguig', province = 'Metro Manila', latitude = 14.509939, longitude = 121.063545 WHERE user_id = 6;
+UPDATE users SET city = 'Manila', province = 'Metro Manila', latitude = 14.583397, longitude = 120.992684 WHERE user_id = 7;
+UPDATE users SET city = 'Antipolo City', province = 'Rizal', latitude = 14.593416, longitude = 121.173204 WHERE user_id = 8;
+UPDATE users SET city = 'Cebu City', province = 'Cebu', latitude = 10.305637, longitude = 123.872591 WHERE user_id = 9;
+UPDATE users SET city = 'Caloocan', province = 'Metro Manila', latitude = 14.651708, longitude = 120.981805 WHERE user_id = 10;
+UPDATE users SET city = 'Legazpi City', province = 'Albay', latitude = 13.139577, longitude = 123.730398 WHERE user_id = 11;
+UPDATE users SET city = 'Cebu City', province = 'Cebu', latitude = 10.297268, longitude = 123.892129 WHERE user_id = 12;
+UPDATE users SET city = 'Caloocan', province = 'Metro Manila', latitude = 14.654475, longitude = 120.969996 WHERE user_id = 13;
+UPDATE users SET city = 'Baguio City', province = 'Benguet', latitude = 16.401264, longitude = 120.602566 WHERE user_id = 14;
+UPDATE users SET city = 'Quezon City', province = 'Metro Manila', latitude = 14.671432, longitude = 121.050446 WHERE user_id = 15;
+UPDATE users SET city = 'Quezon City', province = 'Metro Manila', latitude = 14.660684, longitude = 121.026058 WHERE user_id = 16;
+UPDATE users SET city = 'Caloocan', province = 'Metro Manila', latitude = 14.646338, longitude = 120.981657 WHERE user_id = 17;
+UPDATE users SET city = 'Makati', province = 'Metro Manila', latitude = 14.556678, longitude = 121.039735 WHERE user_id = 18;
+UPDATE users SET city = 'Bacolod City', province = 'Negros Occidental', latitude = 10.673112, longitude = 122.945251 WHERE user_id = 19;
+UPDATE users SET city = 'Naga City', province = 'Camarines Sur', latitude = 13.608849, longitude = 123.184078 WHERE user_id = 20;
+UPDATE users SET city = 'Pasig', province = 'Metro Manila', latitude = 14.566910, longitude = 121.065264 WHERE user_id = 21;
+UPDATE users SET city = 'Davao City', province = 'Davao del Sur', latitude = 7.205068, longitude = 125.473309 WHERE user_id = 22;
+UPDATE users SET city = 'Cavite City', province = 'Cavite', latitude = 14.491015, longitude = 120.892695 WHERE user_id = 23;
+UPDATE users SET city = 'Davao City', province = 'Davao del Sur', latitude = 7.186718, longitude = 125.442924 WHERE user_id = 24;
+UPDATE users SET city = 'Pasig', province = 'Metro Manila', latitude = 14.580429, longitude = 121.069195 WHERE user_id = 25;
+UPDATE users SET city = 'Antipolo City', province = 'Rizal', latitude = 14.604158, longitude = 121.180649 WHERE user_id = 26;
+UPDATE users SET city = 'Makati', province = 'Metro Manila', latitude = 14.560076, longitude = 121.042619 WHERE user_id = 27;
+UPDATE users SET city = 'Antipolo City', province = 'Rizal', latitude = 14.600157, longitude = 121.195824 WHERE user_id = 28;
+UPDATE users SET city = 'Baguio City', province = 'Benguet', latitude = 16.388065, longitude = 120.605987 WHERE user_id = 29;
+UPDATE users SET city = 'Legazpi City', province = 'Albay', latitude = 13.120024, longitude = 123.761839 WHERE user_id = 30;
+UPDATE users SET city = 'Iloilo City', province = 'Iloilo', latitude = 10.721324, longitude = 122.581240 WHERE user_id = 31;
+UPDATE users SET city = 'Bacolod City', province = 'Negros Occidental', latitude = 10.692830, longitude = 122.945128 WHERE user_id = 32;
+UPDATE users SET city = 'Pasig', province = 'Metro Manila', latitude = 14.580929, longitude = 121.096636 WHERE user_id = 33;
+UPDATE users SET city = 'Caloocan', province = 'Metro Manila', latitude = 14.660295, longitude = 120.955870 WHERE user_id = 34;
+UPDATE users SET city = 'Iloilo City', province = 'Iloilo', latitude = 10.731805, longitude = 122.560990 WHERE user_id = 35;
+UPDATE users SET city = 'Pasig', province = 'Metro Manila', latitude = 14.595922, longitude = 121.103300 WHERE user_id = 36;
+UPDATE users SET city = 'Cebu City', province = 'Cebu', latitude = 10.304774, longitude = 123.873268 WHERE user_id = 37;
+UPDATE users SET city = 'Pasig', province = 'Metro Manila', latitude = 14.570160, longitude = 121.090825 WHERE user_id = 38;
+UPDATE users SET city = 'Bacolod City', province = 'Negros Occidental', latitude = 10.686506, longitude = 122.950021 WHERE user_id = 39;
+UPDATE users SET city = 'Manila', province = 'Metro Manila', latitude = 14.617347, longitude = 120.993073 WHERE user_id = 40;
+UPDATE users SET city = 'Baguio City', province = 'Benguet', latitude = 16.422024, longitude = 120.577102 WHERE user_id = 41;
+UPDATE users SET city = 'Antipolo City', province = 'Rizal', latitude = 14.603699, longitude = 121.162336 WHERE user_id = 42;
+UPDATE users SET city = 'Iloilo City', province = 'Iloilo', latitude = 10.732174, longitude = 122.571155 WHERE user_id = 43;
+UPDATE users SET city = 'Makati', province = 'Metro Manila', latitude = 14.567746, longitude = 121.012842 WHERE user_id = 44;
+UPDATE users SET city = 'Taguig', province = 'Metro Manila', latitude = 14.528147, longitude = 121.043940 WHERE user_id = 45;
+UPDATE users SET city = 'Iloilo City', province = 'Iloilo', latitude = 10.714351, longitude = 122.560426 WHERE user_id = 46;
+UPDATE users SET city = 'Antipolo City', province = 'Rizal', latitude = 14.587140, longitude = 121.156848 WHERE user_id = 47;
+UPDATE users SET city = 'Baguio City', province = 'Benguet', latitude = 16.389194, longitude = 120.594940 WHERE user_id = 48;
+UPDATE users SET city = 'Legazpi City', province = 'Albay', latitude = 13.132139, longitude = 123.744534 WHERE user_id = 49;
+UPDATE users SET city = 'Iloilo City', province = 'Iloilo', latitude = 10.707852, longitude = 122.543788 WHERE user_id = 50;
+UPDATE users SET city = 'Makati', province = 'Metro Manila', latitude = 14.552430, longitude = 121.028901 WHERE user_id = 51;
+UPDATE users SET city = 'Iloilo City', province = 'Iloilo', latitude = 10.718294, longitude = 122.563431 WHERE user_id = 52;
+UPDATE users SET city = 'Baguio City', province = 'Benguet', latitude = 16.415900, longitude = 120.581485 WHERE user_id = 53;
+UPDATE users SET city = 'Makati', province = 'Metro Manila', latitude = 14.561546, longitude = 121.021534 WHERE user_id = 54;
+UPDATE users SET city = 'Pasig', province = 'Metro Manila', latitude = 14.593980, longitude = 121.090838 WHERE user_id = 55;
+UPDATE users SET city = 'Cebu City', province = 'Cebu', latitude = 10.334402, longitude = 123.874184 WHERE user_id = 56;
+UPDATE users SET city = 'Makati', province = 'Metro Manila', latitude = 14.567998, longitude = 121.010859 WHERE user_id = 57;
+UPDATE users SET city = 'Davao City', province = 'Davao del Sur', latitude = 7.184965, longitude = 125.438988 WHERE user_id = 58;
+UPDATE users SET city = 'Cebu City', province = 'Cebu', latitude = 10.313318, longitude = 123.866123 WHERE user_id = 59;
+UPDATE users SET city = 'Cebu City', province = 'Cebu', latitude = 10.334568, longitude = 123.869591 WHERE user_id = 60;
+INSERT INTO user_interests (user_id, category) VALUES
 (1, 'Hiking'),
 (1, 'Beach'),
 (1, 'Island hopping'),
@@ -1154,64 +1178,75 @@ INSERT INTO user_interests (user_interest_user_id, user_interest_category) VALUE
 (60, 'Adventure');
 
 -- sign-up details of the sample travelers
-UPDATE users SET user_birthdate = '2000-09-28', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 576 8402' WHERE user_id = 1;
-UPDATE users SET user_birthdate = '2002-10-07', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 624 8794' WHERE user_id = 2;
-UPDATE users SET user_birthdate = '1991-02-15', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 192 9825' WHERE user_id = 3;
-UPDATE users SET user_birthdate = '1987-10-13', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 769 3580' WHERE user_id = 4;
-UPDATE users SET user_birthdate = '1986-09-03', user_gender = 'Prefer not to say', user_emergency_name = 'Family contact', user_emergency_phone = '0918 294 4963' WHERE user_id = 5;
-UPDATE users SET user_birthdate = '1986-08-11', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 962 4200' WHERE user_id = 6;
-UPDATE users SET user_birthdate = '2002-04-21', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 104 2392' WHERE user_id = 7;
-UPDATE users SET user_birthdate = '2000-11-09', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 664 2363' WHERE user_id = 8;
-UPDATE users SET user_birthdate = '1994-06-25', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 395 1487' WHERE user_id = 9;
-UPDATE users SET user_birthdate = '1988-10-25', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 210 5766' WHERE user_id = 10;
-UPDATE users SET user_birthdate = '1998-02-01', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 100 4498' WHERE user_id = 11;
-UPDATE users SET user_birthdate = '1992-01-16', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 825 7511' WHERE user_id = 12;
-UPDATE users SET user_birthdate = '1999-02-19', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 897 5420' WHERE user_id = 13;
-UPDATE users SET user_birthdate = '1996-02-10', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 519 2933' WHERE user_id = 14;
-UPDATE users SET user_birthdate = '1990-04-23', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 161 8617' WHERE user_id = 15;
-UPDATE users SET user_birthdate = '2001-03-22', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 558 9337' WHERE user_id = 16;
-UPDATE users SET user_birthdate = '1992-12-25', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 759 7287' WHERE user_id = 17;
-UPDATE users SET user_birthdate = '1989-07-14', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 100 5420' WHERE user_id = 18;
-UPDATE users SET user_birthdate = '2004-05-01', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 503 2643' WHERE user_id = 19;
-UPDATE users SET user_birthdate = '1987-03-07', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 109 6389' WHERE user_id = 20;
-UPDATE users SET user_birthdate = '1995-07-03', user_gender = 'Prefer not to say', user_emergency_name = 'Family contact', user_emergency_phone = '0918 313 4981' WHERE user_id = 21;
-UPDATE users SET user_birthdate = '1986-10-12', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 564 3084' WHERE user_id = 22;
-UPDATE users SET user_birthdate = '2004-08-27', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 987 7325' WHERE user_id = 23;
-UPDATE users SET user_birthdate = '1991-11-05', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 333 5087' WHERE user_id = 24;
-UPDATE users SET user_birthdate = '1992-03-24', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 667 4220' WHERE user_id = 25;
-UPDATE users SET user_birthdate = '1998-08-20', user_gender = 'Prefer not to say', user_emergency_name = 'Family contact', user_emergency_phone = '0918 148 2701' WHERE user_id = 26;
-UPDATE users SET user_birthdate = '1989-01-17', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 344 7416' WHERE user_id = 27;
-UPDATE users SET user_birthdate = '1994-07-27', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 602 5807' WHERE user_id = 28;
-UPDATE users SET user_birthdate = '2002-03-24', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 229 4742' WHERE user_id = 29;
-UPDATE users SET user_birthdate = '2001-09-21', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 729 2214' WHERE user_id = 30;
-UPDATE users SET user_birthdate = '1994-04-07', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 170 5410' WHERE user_id = 31;
-UPDATE users SET user_birthdate = '1999-08-08', user_gender = 'Prefer not to say', user_emergency_name = 'Family contact', user_emergency_phone = '0918 280 5619' WHERE user_id = 32;
-UPDATE users SET user_birthdate = '1997-09-19', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 194 6933' WHERE user_id = 33;
-UPDATE users SET user_birthdate = '1990-08-11', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 807 9551' WHERE user_id = 34;
-UPDATE users SET user_birthdate = '2004-03-19', user_gender = 'Prefer not to say', user_emergency_name = 'Family contact', user_emergency_phone = '0918 118 8779' WHERE user_id = 35;
-UPDATE users SET user_birthdate = '1997-12-10', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 121 2226' WHERE user_id = 36;
-UPDATE users SET user_birthdate = '2001-02-24', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 239 2186' WHERE user_id = 37;
-UPDATE users SET user_birthdate = '1988-08-18', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 145 3122' WHERE user_id = 38;
-UPDATE users SET user_birthdate = '1996-06-03', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 179 7834' WHERE user_id = 39;
-UPDATE users SET user_birthdate = '1986-08-19', user_gender = 'Prefer not to say', user_emergency_name = 'Family contact', user_emergency_phone = '0918 778 7264' WHERE user_id = 40;
-UPDATE users SET user_birthdate = '1998-10-01', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 182 2485' WHERE user_id = 41;
-UPDATE users SET user_birthdate = '1989-05-14', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 497 8499' WHERE user_id = 42;
-UPDATE users SET user_birthdate = '2000-08-27', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 631 9430' WHERE user_id = 43;
-UPDATE users SET user_birthdate = '1986-05-20', user_gender = 'Prefer not to say', user_emergency_name = 'Family contact', user_emergency_phone = '0918 122 4771' WHERE user_id = 44;
-UPDATE users SET user_birthdate = '1989-08-25', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 597 5191' WHERE user_id = 45;
-UPDATE users SET user_birthdate = '1986-06-10', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 726 4318' WHERE user_id = 46;
-UPDATE users SET user_birthdate = '2002-03-25', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 775 8240' WHERE user_id = 47;
-UPDATE users SET user_birthdate = '2001-04-11', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 356 4252' WHERE user_id = 48;
-UPDATE users SET user_birthdate = '1999-04-07', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 697 6185' WHERE user_id = 49;
-UPDATE users SET user_birthdate = '1992-03-05', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 957 1664' WHERE user_id = 50;
-UPDATE users SET user_birthdate = '1988-05-27', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 561 8722' WHERE user_id = 51;
-UPDATE users SET user_birthdate = '1994-04-27', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 740 9519' WHERE user_id = 52;
-UPDATE users SET user_birthdate = '2001-11-11', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 962 8413' WHERE user_id = 53;
-UPDATE users SET user_birthdate = '1996-02-27', user_gender = 'Prefer not to say', user_emergency_name = 'Family contact', user_emergency_phone = '0918 993 1679' WHERE user_id = 54;
-UPDATE users SET user_birthdate = '1994-10-12', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 910 1313' WHERE user_id = 55;
-UPDATE users SET user_birthdate = '1990-07-15', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 887 5364' WHERE user_id = 56;
-UPDATE users SET user_birthdate = '1993-03-26', user_gender = 'Prefer not to say', user_emergency_name = 'Family contact', user_emergency_phone = '0918 744 2889' WHERE user_id = 57;
-UPDATE users SET user_birthdate = '2000-02-21', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 755 7040' WHERE user_id = 58;
-UPDATE users SET user_birthdate = '1988-11-07', user_gender = 'Female', user_emergency_name = 'Family contact', user_emergency_phone = '0918 586 5194' WHERE user_id = 59;
-UPDATE users SET user_birthdate = '1991-12-01', user_gender = 'Male', user_emergency_name = 'Family contact', user_emergency_phone = '0918 647 1592' WHERE user_id = 60;
-UPDATE id_verifications SET verification_id_type = 'National ID (PhilSys)';
+UPDATE users SET birthdate = '2000-09-28', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 576 8402' WHERE user_id = 1;
+UPDATE users SET birthdate = '2002-10-07', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 624 8794' WHERE user_id = 2;
+UPDATE users SET birthdate = '1991-02-15', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 192 9825' WHERE user_id = 3;
+UPDATE users SET birthdate = '1987-10-13', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 769 3580' WHERE user_id = 4;
+UPDATE users SET birthdate = '1986-09-03', gender = 'Prefer not to say', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 294 4963' WHERE user_id = 5;
+UPDATE users SET birthdate = '1986-08-11', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 962 4200' WHERE user_id = 6;
+UPDATE users SET birthdate = '2002-04-21', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 104 2392' WHERE user_id = 7;
+UPDATE users SET birthdate = '2000-11-09', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 664 2363' WHERE user_id = 8;
+UPDATE users SET birthdate = '1994-06-25', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 395 1487' WHERE user_id = 9;
+UPDATE users SET birthdate = '1988-10-25', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 210 5766' WHERE user_id = 10;
+UPDATE users SET birthdate = '1998-02-01', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 100 4498' WHERE user_id = 11;
+UPDATE users SET birthdate = '1992-01-16', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 825 7511' WHERE user_id = 12;
+UPDATE users SET birthdate = '1999-02-19', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 897 5420' WHERE user_id = 13;
+UPDATE users SET birthdate = '1996-02-10', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 519 2933' WHERE user_id = 14;
+UPDATE users SET birthdate = '1990-04-23', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 161 8617' WHERE user_id = 15;
+UPDATE users SET birthdate = '2001-03-22', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 558 9337' WHERE user_id = 16;
+UPDATE users SET birthdate = '1992-12-25', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 759 7287' WHERE user_id = 17;
+UPDATE users SET birthdate = '1989-07-14', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 100 5420' WHERE user_id = 18;
+UPDATE users SET birthdate = '2004-05-01', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 503 2643' WHERE user_id = 19;
+UPDATE users SET birthdate = '1987-03-07', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 109 6389' WHERE user_id = 20;
+UPDATE users SET birthdate = '1995-07-03', gender = 'Prefer not to say', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 313 4981' WHERE user_id = 21;
+UPDATE users SET birthdate = '1986-10-12', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 564 3084' WHERE user_id = 22;
+UPDATE users SET birthdate = '2004-08-27', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 987 7325' WHERE user_id = 23;
+UPDATE users SET birthdate = '1991-11-05', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 333 5087' WHERE user_id = 24;
+UPDATE users SET birthdate = '1992-03-24', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 667 4220' WHERE user_id = 25;
+UPDATE users SET birthdate = '1998-08-20', gender = 'Prefer not to say', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 148 2701' WHERE user_id = 26;
+UPDATE users SET birthdate = '1989-01-17', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 344 7416' WHERE user_id = 27;
+UPDATE users SET birthdate = '1994-07-27', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 602 5807' WHERE user_id = 28;
+UPDATE users SET birthdate = '2002-03-24', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 229 4742' WHERE user_id = 29;
+UPDATE users SET birthdate = '2001-09-21', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 729 2214' WHERE user_id = 30;
+UPDATE users SET birthdate = '1994-04-07', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 170 5410' WHERE user_id = 31;
+UPDATE users SET birthdate = '1999-08-08', gender = 'Prefer not to say', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 280 5619' WHERE user_id = 32;
+UPDATE users SET birthdate = '1997-09-19', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 194 6933' WHERE user_id = 33;
+UPDATE users SET birthdate = '1990-08-11', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 807 9551' WHERE user_id = 34;
+UPDATE users SET birthdate = '2004-03-19', gender = 'Prefer not to say', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 118 8779' WHERE user_id = 35;
+UPDATE users SET birthdate = '1997-12-10', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 121 2226' WHERE user_id = 36;
+UPDATE users SET birthdate = '2001-02-24', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 239 2186' WHERE user_id = 37;
+UPDATE users SET birthdate = '1988-08-18', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 145 3122' WHERE user_id = 38;
+UPDATE users SET birthdate = '1996-06-03', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 179 7834' WHERE user_id = 39;
+UPDATE users SET birthdate = '1986-08-19', gender = 'Prefer not to say', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 778 7264' WHERE user_id = 40;
+UPDATE users SET birthdate = '1998-10-01', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 182 2485' WHERE user_id = 41;
+UPDATE users SET birthdate = '1989-05-14', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 497 8499' WHERE user_id = 42;
+UPDATE users SET birthdate = '2000-08-27', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 631 9430' WHERE user_id = 43;
+UPDATE users SET birthdate = '1986-05-20', gender = 'Prefer not to say', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 122 4771' WHERE user_id = 44;
+UPDATE users SET birthdate = '1989-08-25', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 597 5191' WHERE user_id = 45;
+UPDATE users SET birthdate = '1986-06-10', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 726 4318' WHERE user_id = 46;
+UPDATE users SET birthdate = '2002-03-25', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 775 8240' WHERE user_id = 47;
+UPDATE users SET birthdate = '2001-04-11', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 356 4252' WHERE user_id = 48;
+UPDATE users SET birthdate = '1999-04-07', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 697 6185' WHERE user_id = 49;
+UPDATE users SET birthdate = '1992-03-05', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 957 1664' WHERE user_id = 50;
+UPDATE users SET birthdate = '1988-05-27', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 561 8722' WHERE user_id = 51;
+UPDATE users SET birthdate = '1994-04-27', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 740 9519' WHERE user_id = 52;
+UPDATE users SET birthdate = '2001-11-11', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 962 8413' WHERE user_id = 53;
+UPDATE users SET birthdate = '1996-02-27', gender = 'Prefer not to say', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 993 1679' WHERE user_id = 54;
+UPDATE users SET birthdate = '1994-10-12', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 910 1313' WHERE user_id = 55;
+UPDATE users SET birthdate = '1990-07-15', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 887 5364' WHERE user_id = 56;
+UPDATE users SET birthdate = '1993-03-26', gender = 'Prefer not to say', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 744 2889' WHERE user_id = 57;
+UPDATE users SET birthdate = '2000-02-21', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 755 7040' WHERE user_id = 58;
+UPDATE users SET birthdate = '1988-11-07', gender = 'Female', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 586 5194' WHERE user_id = 59;
+UPDATE users SET birthdate = '1991-12-01', gender = 'Male', emergency_contact_name = 'Family contact', emergency_contact_phone = '0918 647 1592' WHERE user_id = 60;
+UPDATE id_verifications SET id_type = 'National ID (PhilSys)';
+
+-- every member has read the sample group chats (new messages after this show as unread)
+INSERT INTO chat_reads (user_id, activity_id, last_read_message_id)
+SELECT a.user_id, a.activity_id,
+       COALESCE((SELECT MAX(m.message_id) FROM group_messages m WHERE m.activity_id = a.activity_id), 0)
+FROM activities a;
+INSERT INTO chat_reads (user_id, activity_id, last_read_message_id)
+SELECT b.user_id, a.activity_id,
+       COALESCE((SELECT MAX(m.message_id) FROM group_messages m WHERE m.activity_id = a.activity_id), 0)
+FROM bookings b JOIN activities a ON a.activity_id = b.activity_id
+WHERE b.status = 'APPROVED' AND b.user_id <> a.user_id;
