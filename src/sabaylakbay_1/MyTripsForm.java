@@ -4,6 +4,7 @@ import sabaylakbay_1.model.*;
 import sabaylakbay_1.backend.Backend;
 import sabaylakbay_1.ui.Icons;
 import sabaylakbay_1.ui.Page;
+import sabaylakbay_1.ui.Dialogs;
 import sabaylakbay_1.ui.Theme;
 import sabaylakbay_1.ui.components.*;
 
@@ -58,7 +59,7 @@ public class MyTripsForm extends Page {
     public void select(int groupId) {
         selectedId = groupId;
         try {
-            // BACKEND: Backend.getGroup() (sample data for now)
+            // BACKEND: Backend.getGroup() reads from MySQL
             TravelGroup g = Backend.getGroup(groupId);
             int idx = g.isCompleted() ? 1 : 0;
             if (tabs.getSelected() != idx) {
@@ -71,9 +72,9 @@ public class MyTripsForm extends Page {
 
     private List<TravelGroup> myTrips(boolean completed) {
         int me = Backend.currentUserId();
-        // BACKEND: Backend.getGroupsCreatedBy() (sample data for now)
+        // BACKEND: Backend.getGroupsCreatedBy() reads from MySQL
         List<TravelGroup> all = new ArrayList<>(Backend.getGroupsCreatedBy(me));
-        // BACKEND: Backend.getGroupsJoinedBy() (sample data for now)
+        // BACKEND: Backend.getGroupsJoinedBy() reads from MySQL
         all.addAll(Backend.getGroupsJoinedBy(me));
         List<TravelGroup> out = new ArrayList<>();
         for (TravelGroup g : all) if (!g.isCancelled() && g.isCompleted() == completed) out.add(g);
@@ -146,7 +147,7 @@ public class MyTripsForm extends Page {
             detail.repaint();
             return;
         }
-        // BACKEND: Backend.getGroup() (sample data for now)
+        // BACKEND: Backend.getGroup() reads from MySQL
         TravelGroup g = Backend.getGroup(selectedId);
         boolean organizer = g.getCreatorId() == Backend.currentUserId();
 
@@ -174,7 +175,8 @@ public class MyTripsForm extends Page {
         addDetail(head);
         detail.add(Theme.gap(18));
 
-        if (g.isCompleted()) {
+        // BACKEND: Backend.canReview() reads from MySQL
+        if (g.isCompleted() && Backend.canReview(g.getId(), Backend.currentUserId())) {   // organizers receive reviews
             addDetail(reviewCard(g));
             detail.add(Theme.gap(16));
         }
@@ -241,7 +243,7 @@ public class MyTripsForm extends Page {
         JComponent addBtn = null;
         if (organizer && !g.isCompleted()) addBtn = Theme.link("+ Add", () -> addExpense(g));
         RoundPanel p = card("Estimated expenses", "wallet", addBtn);
-        // BACKEND: Backend.getExpenses() (sample data for now)
+        // BACKEND: Backend.getExpenses() reads from MySQL
         List<Expense> list = Backend.getExpenses(g.getId());
         double total = 0;
         for (Expense e : list) {
@@ -255,7 +257,7 @@ public class MyTripsForm extends Page {
                 del.setToolTipText("Remove");
                 del.addMouseListener(new MouseAdapter() {
                     @Override public void mouseClicked(MouseEvent ev) {
-                        // BACKEND: Backend.deleteExpense() (button only for now)
+                        // BACKEND: Backend.deleteExpense() saves to MySQL
                         if (Theme.run(MyTripsForm.this, () -> Backend.deleteExpense(e.getId()))) refresh();
                     }
                 });
@@ -290,7 +292,7 @@ public class MyTripsForm extends Page {
             addBtn = b;
         }
         RoundPanel p = card("Itinerary", "map", addBtn);
-        // BACKEND: Backend.getItinerary() (sample data for now)
+        // BACKEND: Backend.getItinerary() reads from MySQL
         List<Activity> acts = Backend.getItinerary(g.getId());
         if (acts.isEmpty())
             p.add(Theme.left(Theme.label(organizer ? "No activities yet. Add the first one." : "The organizer hasn't added activities yet.",
@@ -313,17 +315,18 @@ public class MyTripsForm extends Page {
             t.add(Theme.left(Theme.label(a.getTitle(), Font.PLAIN, 13, Theme.TEXT_DARK)));
             if (a.getLocation() != null && !a.getLocation().isBlank())
                 t.add(Theme.left(Theme.iconText("pin", a.getLocation(), Theme.TEXT_GRAY)));
+            if (a.getDetails() != null && !a.getDetails().isBlank())
+                t.add(Theme.left(Theme.label(a.getDetails(), Font.ITALIC, 12, Theme.TEXT_GRAY)));
             r.add(t, BorderLayout.CENTER);
             JPanel right = Theme.row(8);
-            if (a.getEstimatedCost() > 0) right.add(Theme.label(Theme.peso(a.getEstimatedCost()), Font.PLAIN, 12, Theme.TEXT_GRAY));
             if (organizer && !g.isCompleted()) {
                 JLabel del = new JLabel(Icons.get("trash", 14, Theme.HINT));
                 del.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
                 del.setToolTipText("Remove");
                 del.addMouseListener(new MouseAdapter() {
                     @Override public void mouseClicked(MouseEvent e) {
-                        if (Theme.confirm(MyTripsForm.this, "Remove \"" + a.getTitle() + "\"?")
-                                // BACKEND: Backend.deleteActivity() (button only for now)
+                        if (Theme.confirm(MyTripsForm.this, "Remove this activity?", "\"" + a.getTitle() + "\" will be taken off the itinerary.", "Remove", true)
+                                // BACKEND: Backend.deleteActivity() saves to MySQL
                                 && Theme.run(MyTripsForm.this, () -> Backend.deleteActivity(a.getId()))) refresh();
                     }
                 });
@@ -339,7 +342,7 @@ public class MyTripsForm extends Page {
 
     private JComponent updatesCard(TravelGroup g) {
         RoundPanel p = card("Trip updates", "megaphone", null);
-        // BACKEND: Backend.getAnnouncements() (sample data for now)
+        // BACKEND: Backend.getAnnouncements() reads from MySQL
         List<Message> ann = Backend.getAnnouncements(g.getId());
         if (ann.isEmpty()) p.add(Theme.left(Theme.label("No updates from the organizer yet.", Font.PLAIN, 13, Theme.TEXT_GRAY)));
         for (Message m : ann) {
@@ -367,14 +370,16 @@ public class MyTripsForm extends Page {
         t.add(Theme.left(Theme.label("How was the trip?", Font.BOLD, 15, Theme.TEXT_DARK)));
         t.add(Theme.left(Theme.label("Rate your companions and leave a review to help other travelers.", Font.PLAIN, 12, Theme.TEXT_GRAY)));
         p.add(t);
-        // BACKEND: Backend.hasRatedCompanions() (sample data for now)
+        // BACKEND: Backend.hasRatedCompanions() reads from MySQL
         boolean rated = Backend.hasRatedCompanions(g.getId(), me);
-        // BACKEND: Backend.hasReviewedTrip() (sample data for now)
+        // BACKEND: Backend.hasReviewedTrip() reads from MySQL
         boolean reviewed = Backend.hasReviewedTrip(g.getId(), me);
-        RoundButton rate = new RoundButton(rated ? "Companions rated \u2713" : "Rate companions", RoundButton.Style.OUTLINE).small();
+        RoundButton rate = new RoundButton(rated ? "Companions rated" : "Rate companions", RoundButton.Style.OUTLINE).small();
+        if (rated) rate.icon("check");
         rate.setEnabled(!rated);
         rate.addActionListener(e -> { if (ReviewForm.rateCompanions(this, g)) refresh(); });
-        RoundButton review = new RoundButton(reviewed ? "Reviewed \u2713" : "Write a review").small();
+        RoundButton review = new RoundButton(reviewed ? "Reviewed" : "Write a review").small();
+        if (reviewed) review.icon("check");
         review.setEnabled(!reviewed);
         review.addActionListener(e -> { if (ReviewForm.reviewTrip(this, g)) refresh(); });
         JPanel b = Theme.clear(new GridBagLayout());
@@ -387,14 +392,15 @@ public class MyTripsForm extends Page {
     private void addActivity(TravelGroup g) {
         DateField date = DateField.date();
         date.setDate(g.getStartDate());
+        date.setRange(g.getStartDate(), g.getEndDate());
         DateField time = DateField.time();
         time.setTime(java.time.LocalTime.of(8, 0));
         RoundTextField title = new RoundTextField("e.g. Swim at Batlag Falls");
         RoundTextField loc = new RoundTextField("e.g. Batlag Falls");
-        RoundTextField cost = new RoundTextField("0");
-        JPanel p = form(new String[]{"Date", "Time", "Activity *", "Location", "Estimated cost per person (\u20B1)"},
-                new JComponent[]{date, time, title, loc, cost});
-        if (JOptionPane.showConfirmDialog(this, p, "Add Activity", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION)
+        RoundTextField details = new RoundTextField("e.g. Bring a change of clothes");
+        JPanel p = form(new String[]{"Date", "Time", "Activity *", "Location", "Details"},
+                new JComponent[]{date, time, title, loc, details});
+        if (!Dialogs.form(this, "calendar", "Add an activity", "It shows in the itinerary for every member.", p, "Add activity"))
             return;
         if (date.getDate().isBefore(g.getStartDate()) || date.getDate().isAfter(g.getEndDate())) {
             Theme.error(this, "The date must be within the trip (" + Theme.dateRange(g.getStartDate(), g.getEndDate()) + ").");
@@ -407,13 +413,8 @@ public class MyTripsForm extends Page {
         a.setTime(time.getTime());
         a.setTitle(title.getText().trim());
         a.setLocation(loc.getText().trim());
-        try {
-            a.setEstimatedCost(cost.getText().isBlank() ? 0 : Double.parseDouble(cost.getText().replace(",", "").trim()));
-        } catch (NumberFormatException ex) {
-            Theme.error(this, "Cost must be a number.");
-            return;
-        }
-        // BACKEND: Backend.addActivity() (button only for now)
+        a.setDetails(details.getText().trim());
+        // BACKEND: Backend.addActivity() saves to MySQL
         if (Theme.run(this, () -> Backend.addActivity(a))) refresh();
     }
 
@@ -421,7 +422,7 @@ public class MyTripsForm extends Page {
         RoundTextField label = new RoundTextField("e.g. Van rental (shared)");
         RoundTextField amount = new RoundTextField("e.g. 450");
         JPanel p = form(new String[]{"Expense *", "Amount per person (\u20B1) *"}, new JComponent[]{label, amount});
-        if (JOptionPane.showConfirmDialog(this, p, "Add Expense", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION)
+        if (!Dialogs.form(this, "wallet", "Add an expense", "Members see the estimated cost per person.", p, "Add expense"))
             return;
         if (label.getText().isBlank()) { Theme.error(this, "Expense name is required."); return; }
         Expense e = new Expense();
@@ -433,7 +434,7 @@ public class MyTripsForm extends Page {
             Theme.error(this, "Amount must be a number.");
             return;
         }
-        // BACKEND: Backend.addExpense() (button only for now)
+        // BACKEND: Backend.addExpense() saves to MySQL
         if (Theme.run(this, () -> Backend.addExpense(e))) refresh();
     }
 

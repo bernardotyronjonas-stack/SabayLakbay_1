@@ -1,5 +1,6 @@
 package sabaylakbay_1;
 
+import sabaylakbay_1.ui.SubPage;
 import sabaylakbay_1.ui.AppWindow;
 import sabaylakbay_1.ui.Page;
 import sabaylakbay_1.ui.components.FadeCards;
@@ -46,7 +47,7 @@ public class MainDashboard extends JPanel {
 
     public MainDashboard() {
         super(new BorderLayout());
-        sidebar = new Sidebar(Theme.GREEN, null, MENU, this::showPage, "Traveler", "chevronRight",
+        sidebar = new Sidebar(Color.WHITE, null, MENU, this::showPage, "Traveler", "chevronRight",
                 () -> showPage("PROFILE"));
         content.setBackground(Theme.BG);
 
@@ -68,6 +69,7 @@ public class MainDashboard extends JPanel {
 
         add(sidebar, BorderLayout.WEST);
         add(content, BorderLayout.CENTER);
+        SubPage.setArea(content);    // detail pages (trip details, profiles...) open over this area
         showPage("HOME");
     }
 
@@ -79,6 +81,7 @@ public class MainDashboard extends JPanel {
     // ===== navigation used by all pages =====
 
     public void showPage(String key) {
+        SubPage.closeAll();          // leaving the page closes any open detail page
         if ("CREATE".equals(key)) createGroupForm.startCreate();
         showPageNoReset(key);
     }
@@ -135,19 +138,20 @@ public class MainDashboard extends JPanel {
     }
 
     public void refreshBadges() {
-        // BACKEND: Backend.getUnreadCount() (sample data for now)
+        // BACKEND: Backend.getUnreadCount() reads from MySQL
+        sidebar.refreshUser();
         sidebar.setBadge("NOTIFS", Backend.getUnreadCount(Backend.currentUserId()));
         int pending = 0;
-        // BACKEND: Backend.getGroupsCreatedBy() (sample data for now)
+        // BACKEND: Backend.getGroupsCreatedBy() reads from MySQL
         for (TravelGroup g : Backend.getGroupsCreatedBy(Backend.currentUserId()))
-            // BACKEND: Backend.getPendingRequestsForGroup() (sample data for now)
+            // BACKEND: Backend.getPendingRequestsForGroup() reads from MySQL
             if (!g.isCancelled()) pending += Backend.getPendingRequestsForGroup(g.getId()).size();
         sidebar.setBadge("GROUPS", pending);
     }
 
     public void logout() {
-        if (!Theme.confirm(this, "Log out of SabayLakbay?")) return;
-        // BACKEND: Backend.logout() (button only for now)
+        if (!Theme.confirm(this, "Log out?", "See you on your next trip.", "Log out", false)) return;
+        // BACKEND: Backend.logout() saves to MySQL
         Backend.logout();
         AppWindow.show(new LoginForm(), "SabayLakbay - Log In");
     }

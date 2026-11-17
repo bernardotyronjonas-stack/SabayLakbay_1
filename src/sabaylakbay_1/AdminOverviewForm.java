@@ -62,7 +62,7 @@ public class AdminOverviewForm extends Page {
         BarChart places = new BarChart(Theme.GREEN, "travelers");
         places.setData(Backend.getMostVisitedPlaces(8));              // BACKEND
         row.add(card("Most visited places", "pin", places));
-        // BACKEND: Backend.getTopCreators() (sample data for now)
+        // BACKEND: Backend.getTopCreators() reads from MySQL
         row.add(card("Top performing creators", "trend", creatorsTable(Backend.getTopCreators(5))));
         addFull(row);
         box.add(Theme.gap(18));

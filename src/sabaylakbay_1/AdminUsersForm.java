@@ -4,6 +4,7 @@ import sabaylakbay_1.backend.Backend;
 import sabaylakbay_1.model.AccountStatus;
 import sabaylakbay_1.model.User;
 import sabaylakbay_1.ui.Page;
+import sabaylakbay_1.ui.Dialogs;
 import sabaylakbay_1.ui.Theme;
 import sabaylakbay_1.ui.components.*;
 
@@ -110,9 +111,9 @@ public class AdminUsersForm extends Page {
             return wrap(r);
         }
         c.gridx = 1; r.add(sized(Theme.label(Theme.date(u.getCreatedAt().toLocalDate()), Font.PLAIN, 12, Theme.TEXT_DARK), COL[1]), c);
-        // BACKEND: Backend.countGroupsOf() (sample data for now)
+        // BACKEND: Backend.countGroupsOf() reads from MySQL
         c.gridx = 2; r.add(sized(Theme.label(String.valueOf(Backend.countGroupsOf(u.getId())), Font.PLAIN, 13, Theme.TEXT_DARK), COL[2]), c);
-        // BACKEND: Backend.countReportsAgainstUser() (sample data for now)
+        // BACKEND: Backend.countReportsAgainstUser() reads from MySQL
         int reports = Backend.countReportsAgainstUser(u.getId());
         c.gridx = 3; r.add(sized(reports > 0 ? new Chip(reports + " report" + (reports > 1 ? "s" : ""), Theme.RED_LIGHT, Theme.RED)
                 : Theme.label("None", Font.PLAIN, 12, Theme.HINT), COL[3]), c);
@@ -160,24 +161,23 @@ public class AdminUsersForm extends Page {
     // ===== account actions (also used by AdminUserDetailForm) =====
 
     static void suspend(Component parent, User u, AdminDashboard admin) {
-        String reason = JOptionPane.showInputDialog(parent, "Why are you suspending " + u.getFullName() + "?\n"
-                + "They won't be able to log in until you reactivate the account.", "Suspend account", JOptionPane.PLAIN_MESSAGE);
+        String reason = Dialogs.input(parent, "Suspend " + u.getFullName() + "?",
+                "They won't be able to log in until you reactivate the account. The reason is saved with the account.",
+                "Reason for suspending", "Suspend account", true, true);
         if (reason == null) return;
-        if (reason.isBlank()) { Theme.error(parent, "Please give a reason."); return; }
         if (Theme.run(parent, () -> Backend.suspendUser(u.getId(), reason.trim()))) admin.refreshCurrent();   // BACKEND
     }
 
     static void reactivate(Component parent, User u, AdminDashboard admin) {
-        if (!Theme.confirm(parent, "Reactivate " + u.getFullName() + "'s account?")) return;
+        if (!Theme.confirm(parent, "Reactivate this account?", u.getFullName() + " will be able to log in and join trips again.", "Reactivate", false)) return;
         if (Theme.run(parent, () -> Backend.reactivateUser(u.getId()))) admin.refreshCurrent();              // BACKEND
     }
 
     static void remove(Component parent, User u, AdminDashboard admin) {
-        String reason = JOptionPane.showInputDialog(parent, "Remove " + u.getFullName() + "'s account?\n"
-                + "Only do this when it is justified under the platform rules. Which rule was broken?",
-                "Remove account", JOptionPane.WARNING_MESSAGE);
+        String reason = Dialogs.input(parent, "Remove " + u.getFullName() + "'s account?",
+                "Only do this when it is justified under the platform rules. Which rule was broken?",
+                "Rule that was broken", "Remove account", true, true);
         if (reason == null) return;
-        if (reason.isBlank()) { Theme.error(parent, "Please write which rule was broken."); return; }
         if (Theme.run(parent, () -> Backend.removeUser(u.getId(), reason.trim()))) admin.refreshCurrent();   // BACKEND
     }
 }

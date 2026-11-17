@@ -7,12 +7,12 @@ import java.time.LocalTime;
 public class Activity {
 
     private int id;
+    private String details;
     private int groupId;
     private LocalDate date;
     private LocalTime time;
     private String title;
     private String location;
-    private double estimatedCost;
 
     public Activity() { }
 
@@ -28,6 +28,7 @@ public class Activity {
     public void setTitle(String title) { this.title = title; }
     public String getLocation() { return location; }
     public void setLocation(String location) { this.location = location; }
-    public double getEstimatedCost() { return estimatedCost; }
-    public void setEstimatedCost(double estimatedCost) { this.estimatedCost = estimatedCost; }
+    /** Extra details, e.g. "Bring a change of clothes" */
+    public String getDetails() { return details; }
+    public void setDetails(String details) { this.details = details; }
 }

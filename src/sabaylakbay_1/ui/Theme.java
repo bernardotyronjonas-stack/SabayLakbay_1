@@ -17,16 +17,16 @@ import java.time.format.DateTimeFormatter;
 public final class Theme {
 
     public static final Color GREEN = new Color(0x0B4F3A);
-    public static final Color GREEN_HOVER = new Color(0x0E6349);
-    public static final Color GREEN_LIGHT = new Color(0xE6F2EC);
+    public static final Color GREEN_HOVER = new Color(0x0D6A4D);
+    public static final Color GREEN_LIGHT = new Color(0xE7F4EE);
     public static final Color ORANGE = new Color(0xF4600C);
     public static final Color ORANGE_HOVER = new Color(0xDB5309);
-    public static final Color BG = new Color(0xF5F7F6);
+    public static final Color BG = new Color(0xF6F7F9);
     public static final Color WHITE = Color.WHITE;
-    public static final Color TEXT_DARK = new Color(0x1E2A35);
-    public static final Color TEXT_GRAY = new Color(0x6B7280);
-    public static final Color HINT = new Color(0x9AA3AD);
-    public static final Color BORDER = new Color(0xE3E7EA);
+    public static final Color TEXT_DARK = new Color(0x101828);
+    public static final Color TEXT_GRAY = new Color(0x667085);
+    public static final Color HINT = new Color(0x98A2B3);
+    public static final Color BORDER = new Color(0xE9ECEF);
     public static final Color LINK = new Color(0x137A4F);
     public static final Color RED = new Color(0xD93C3C);
     public static final Color RED_LIGHT = new Color(0xFDECEC);
@@ -35,7 +35,13 @@ public final class Theme {
     public static final Color BLUE_LIGHT = new Color(0xE8F0FB);
     public static final Color BLUE = new Color(0x2B5FA8);
 
-    public static final String FONT = "Segoe UI";
+    /** Medium weight, e.g. Theme.font(Theme.MEDIUM, 14). */
+    public static final int MEDIUM = 0x100;
+
+    // Inter font, bundled in src/sabaylakbay_1/fonts (falls back to Segoe UI if it can't load)
+    private static final Font[] INTER = new Font[4];          // regular, medium, semibold, bold
+    private static final java.util.Map<String, Font> FONT_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    public static final String FONT = loadFonts();
 
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("MMM d, yyyy");
     private static final DateTimeFormatter DATE_SHORT = DateTimeFormatter.ofPattern("MMM d");
@@ -43,13 +49,57 @@ public final class Theme {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("h:mm a");
     private static final DecimalFormat MONEY = new DecimalFormat("#,##0.##");
 
+    static { Look.install(); }
+
     private Theme() { }
 
     // ===== fonts / labels =====
-    public static Font font(int style, int size) { return new Font(FONT, style, size); }
+    /**
+     * The app font. Font.PLAIN = regular, Font.BOLD = semibold (bold for big titles),
+     * Theme.MEDIUM = medium. Big text gets slightly tighter letter spacing.
+     */
+    public static Font font(int style, int size) {
+        int s = size <= 11 ? size + 1 : size;                     // small text a bit larger, easier to read
+        String key = style + ":" + s;
+        return FONT_CACHE.computeIfAbsent(key, k -> {
+            boolean italic = (style & Font.ITALIC) != 0;
+            if (INTER[0] == null) return new Font("Segoe UI", style & ~MEDIUM, s);
+            Font base;
+            if ((style & MEDIUM) != 0) base = INTER[1];
+            else if ((style & Font.BOLD) != 0) base = s >= 20 ? INTER[3] : INTER[2];
+            else base = INTER[0];
+            Font f = base.deriveFont(italic ? Font.ITALIC : Font.PLAIN, (float) s);
+            if (s >= 20) {
+                java.util.Map<java.awt.font.TextAttribute, Object> a = new java.util.HashMap<>();
+                a.put(java.awt.font.TextAttribute.TRACKING, s >= 28 ? -0.025f : -0.015f);
+                a.put(java.awt.font.TextAttribute.KERNING, java.awt.font.TextAttribute.KERNING_ON);
+                f = f.deriveFont(a);
+            }
+            return f;
+        });
+    }
+
+    private static String loadFonts() {
+        String[] names = {"Regular", "Medium", "SemiBold", "Bold"};
+        try {
+            for (int i = 0; i < 4; i++) {
+                try (java.io.InputStream in = Theme.class.getResourceAsStream("/sabaylakbay_1/fonts/Inter-" + names[i] + ".ttf")) {
+                    if (in == null) throw new java.io.IOException("missing font");
+                    INTER[i] = Font.createFont(Font.TRUETYPE_FONT, in);
+                    GraphicsEnvironment.getLocalGraphicsEnvironment().registerFont(INTER[i]);
+                }
+            }
+            return INTER[0].getFamily();
+        } catch (Exception e) {
+            java.util.Arrays.fill(INTER, null);
+            return "Segoe UI";
+        }
+    }
 
     public static JLabel label(String text, int style, int size, Color color) {
-        JLabel l = new JLabel(text);
+        if (text != null && text.startsWith("<html>") && (style & Font.BOLD) != 0 && !text.startsWith("<html><b>"))
+            text = "<html><b>" + text.substring(6).replace("</html>", "") + "</b></html>";   // keeps HTML text bold
+        JLabel l = new JLabel(symbols(text));
         l.setFont(font(style, size));
         l.setForeground(color);
         return l;
@@ -65,11 +115,22 @@ public final class Theme {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>");
     }
 
-    public static JLabel title(String text) { return label(text, Font.BOLD, 24, TEXT_DARK); }
+    /**
+     * Windows' Segoe UI has no star character, so it shows as a box.
+     * This draws the star with Segoe UI Symbol (in yellow) inside the same label.
+     */
+    public static String symbols(String text) {
+        if (text == null || text.indexOf('\u2605') < 0 || text.startsWith("<html>")) return text;
+        String face = INTER[0] != null ? FONT : "Segoe UI Symbol";
+        return "<html><nobr>" + escape(text).replace("\u2605",
+                "<font face='" + face + "' color='#F5B301'>&#9733;</font>") + "</nobr></html>";
+    }
 
-    public static JLabel subtitle(String text) { return label(text, Font.PLAIN, 13, TEXT_GRAY); }
+    public static JLabel title(String text) { return label(text, Font.BOLD, 28, TEXT_DARK); }
 
-    public static JLabel sectionTitle(String text) { return label(text, Font.BOLD, 16, TEXT_DARK); }
+    public static JLabel subtitle(String text) { return label(text, Font.PLAIN, 14, TEXT_GRAY); }
+
+    public static JLabel sectionTitle(String text) { return label(text, Font.BOLD, 17, TEXT_DARK); }
 
     /** Small icon + text row, e.g. calendar + date. */
     public static JLabel iconText(String icon, String text, Color color) {
@@ -205,7 +266,18 @@ public final class Theme {
             case PENDING:  return new Chip("Pending", YELLOW_LIGHT, new Color(0x9A6B00));
             case APPROVED: return new Chip("Approved", GREEN_LIGHT, GREEN);
             case REJECTED: return new Chip("Rejected", RED_LIGHT, RED);
+            case LEFT:     return new Chip("Left the trip", new Color(0xEEF0F2), TEXT_GRAY);
             default:       return new Chip("Cancelled", new Color(0xEEF0F2), TEXT_GRAY);
+        }
+    }
+
+    /** "ID verified" / "ID pending" / ... label. */
+    public static Chip verificationChip(sabaylakbay_1.model.VerificationStatus s) {
+        switch (s) {
+            case APPROVED: { Chip c = new Chip("ID verified", GREEN_LIGHT, GREEN); c.setIcon(Icons.get("check", 11, GREEN)); c.setIconTextGap(4); return c; }
+            case PENDING:  return new Chip("ID being checked", YELLOW_LIGHT, new Color(0x9A6B00));
+            case REJECTED: return new Chip("ID not approved", RED_LIGHT, RED);
+            default:       return new Chip("No ID uploaded", new Color(0xEEF0F2), TEXT_GRAY);
         }
     }
 
@@ -213,6 +285,7 @@ public final class Theme {
     public static void aa(Graphics2D g2) {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+        g2.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
         g2.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
         g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
@@ -231,15 +304,19 @@ public final class Theme {
     }
 
     public static void error(Component parent, String msg) {
-        JOptionPane.showMessageDialog(parent, msg, "SabayLakbay", JOptionPane.WARNING_MESSAGE);
+        Dialogs.message(parent, Dialogs.Kind.WARNING, "Please check this", msg);
     }
 
     public static void info(Component parent, String msg) {
-        JOptionPane.showMessageDialog(parent, msg, "SabayLakbay", JOptionPane.INFORMATION_MESSAGE);
+        Dialogs.message(parent, Dialogs.Kind.INFO, "Good to know", msg);
     }
 
     public static boolean confirm(Component parent, String msg) {
-        return JOptionPane.showConfirmDialog(parent, msg, "SabayLakbay", JOptionPane.YES_NO_OPTION,
-                JOptionPane.QUESTION_MESSAGE) == JOptionPane.YES_OPTION;
+        return Dialogs.confirm(parent, "Are you sure?", msg, "Yes", false);
+    }
+
+    /** Question with your own title and button text. danger = red button. */
+    public static boolean confirm(Component parent, String title, String msg, String okText, boolean danger) {
+        return Dialogs.confirm(parent, title, msg, okText, danger);
     }
 }

@@ -1,6 +1,9 @@
 package sabaylakbay_1;
 
 import sabaylakbay_1.model.GroupFilter;
+import sabaylakbay_1.model.Recommendation;
+import sabaylakbay_1.model.User;
+import sabaylakbay_1.ui.AppWindow;
 import sabaylakbay_1.model.SortOption;
 import sabaylakbay_1.model.TravelGroup;
 import sabaylakbay_1.backend.Backend;
@@ -25,7 +28,7 @@ import java.util.List;
 public class HomeForm extends Page {
 
     private final RoundTextField searchField = new RoundTextField("Search destination, group, or creator...").withIcon("search").borderless();
-    private final JComboBox<String> sortBox = new JComboBox<>(new String[]{"Newest", "Upcoming trip"});
+    private final JComboBox<String> sortBox = new JComboBox<>(new String[]{"Newest", "Upcoming trip", "Nearest to me"});
     private final JPanel filterPanel;
     private final JCheckBox anyDate = new JCheckBox("Any date", true);
     private final DateField dateFrom = DateField.date();
@@ -34,6 +37,7 @@ public class HomeForm extends Page {
     private final JSpinner minSlots = new JSpinner(new SpinnerNumberModel(0, 0, 50, 1));
 
     private final JLabel sectionTitle = Theme.sectionTitle("Featured Groups");
+    private final JPanel picks = Theme.vbox();          // "Picked for you" section
     private final JLabel countLabel = Theme.label("", Font.PLAIN, 12, Theme.TEXT_GRAY);
     private final JLabel seeAll;
     private final JPanel grid = Theme.clear(new GridLayout(0, 3, 20, 20));
@@ -49,7 +53,11 @@ public class HomeForm extends Page {
 
         // ----- hero -----
         box.add(full(new Hero()));
-        box.add(Theme.gap(18));
+        box.add(Theme.gap(26));
+
+        // ----- picked for you (from interests + home location) -----
+        box.add(picks);
+        picks.setAlignmentX(LEFT_ALIGNMENT);
 
         // ----- filter + sort row -----
         RoundButton filterBtn = new RoundButton("Filter").icon("filter").small();
@@ -59,6 +67,7 @@ public class HomeForm extends Page {
         filterBtn.addActionListener(e -> {
             filterPanel.setVisible(!filterPanel.isVisible());
             box.revalidate();
+            box.repaint();
         });
         sortBox.setFont(Theme.font(Font.PLAIN, 12));
         sortBox.addActionListener(e -> refresh());
@@ -157,7 +166,8 @@ public class HomeForm extends Page {
     private GroupFilter buildFilter() {
         GroupFilter f = new GroupFilter();
         f.setKeyword(searchField.getText());
-        f.setSort(sortBox.getSelectedIndex() == 1 ? SortOption.UPCOMING : SortOption.NEWEST);
+        int s = sortBox.getSelectedIndex();
+        f.setSort(s == 1 ? SortOption.UPCOMING : s == 2 ? SortOption.NEAREST : SortOption.NEWEST);
         if (filtersOn) {
             if (!anyDate.isSelected()) { f.setDateFrom(dateFrom.getDate()); f.setDateTo(dateTo.getDate()); }
             String b = maxBudget.getText().replace(",", "").trim();
@@ -175,13 +185,14 @@ public class HomeForm extends Page {
         GroupFilter f = buildFilter();
         List<TravelGroup> list;
         try {
-            // BACKEND: Backend.searchGroups() (sample data for now)
+            // BACKEND: Backend.searchGroups() reads from MySQL
             list = Backend.searchGroups(f);
         } catch (RuntimeException ex) {
             Theme.error(this, ex.getMessage());
             return;
         }
         boolean searching = filtersOn || !searchField.getText().isBlank();
+        buildPicks(searching);
         sectionTitle.setText(searching ? "Search Results" : showAll ? "All Groups" : "Featured Groups");
         countLabel.setText(list.size() + (list.size() == 1 ? " group" : " groups"));
         seeAll.setVisible(!searching && list.size() > featuredCount());
@@ -204,7 +215,7 @@ public class HomeForm extends Page {
     /** The big photo banner with the search bar. */
     private class Hero extends JPanel {
         private final JLabel title = Theme.label("<html>Your next adventure<br>starts here</html>", Font.BOLD, 34, Color.WHITE);
-        private final JLabel sub = Theme.label("Discover and join travel groups, or create your own.", Font.PLAIN, 14, new Color(255, 255, 255, 225));
+        private final JLabel sub = Theme.label(greeting() + " Discover and join travel groups, or create your own.", Font.PLAIN, 14, new Color(255, 255, 255, 225));
         private final RoundPanel search = new RoundPanel(new BorderLayout(), 12, Color.WHITE, null);
 
         Hero() {
@@ -243,5 +254,74 @@ public class HomeForm extends Page {
             });
             g2.dispose();
         }
+    }
+
+    /** "Good morning, Juan." based on the time of day. */
+    private static String greeting() {
+        int h = java.time.LocalTime.now().getHour();
+        String part = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+        sabaylakbay_1.model.User u = Backend.getCurrentUser();
+        String first = u == null || u.getFullName() == null ? "" : ", " + u.getFullName().trim().split("\\s+")[0];
+        return part + first + ".";
+    }
+
+    /** "Picked for you": trips matching the traveler's interests and near their home. */
+    private void buildPicks(boolean searching) {
+        picks.removeAll();
+        if (searching) { picks.revalidate(); picks.repaint(); return; }
+        User me = Backend.getCurrentUser();
+        List<String> likes = Backend.getInterests(me.getId());       // BACKEND
+        if (likes.isEmpty() && !me.hasLocation()) {
+            // nothing to go on yet: invite the traveler to personalize
+            RoundPanel ask = new RoundPanel(new BorderLayout(16, 0), 18, Theme.GREEN_LIGHT, null);
+            ask.setBorder(Theme.pad(18, 20, 18, 20));
+            ask.add(new JLabel(Icons.get("heart", 26, Theme.GREEN)), BorderLayout.WEST);
+            JPanel t = Theme.vbox();
+            t.add(Theme.left(Theme.label("Get trips picked for you", Font.BOLD, 15, Theme.TEXT_DARK)));
+            t.add(Theme.gap(3));
+            t.add(Theme.left(Theme.label("Tell us what you like and where you're based. It takes 30 seconds.", Font.PLAIN, 13, Theme.TEXT_GRAY)));
+            ask.add(Theme.middleLeft(t), BorderLayout.CENTER);
+            RoundButton go = new RoundButton("Personalize").small();
+            go.addActionListener(e -> AppWindow.show(new sabaylakbay_1.OnboardingForm(), "SabayLakbay - Get started"));
+            JPanel gw = Theme.clear(new GridBagLayout());
+            gw.add(go);
+            ask.add(gw, BorderLayout.EAST);
+            picks.add(full(ask));
+            picks.add(Theme.gap(26));
+        } else {
+            List<Recommendation> recs = Backend.getRecommendations(columns());   // BACKEND
+            if (!recs.isEmpty()) {
+                JPanel head = Theme.clear(new BorderLayout());
+                JPanel left = Theme.vbox();
+                left.add(Theme.left(Theme.sectionTitle("Picked for you")));
+                left.add(Theme.gap(3));
+                String basis = likes.isEmpty() ? "Trips near " + me.getLocation()
+                        : "Based on " + String.join(", ", likes.size() > 3 ? likes.subList(0, 3) : likes)
+                          + (likes.size() > 3 ? " and more" : "")
+                          + (me.hasLocation() ? " \u2022 near " + me.getLocation() : "");
+                left.add(Theme.left(Theme.label(basis, Font.PLAIN, 13, Theme.TEXT_GRAY)));
+                head.add(left, BorderLayout.WEST);
+                JLabel edit = Theme.link("Edit interests", () -> app.showPage("PROFILE"));
+                head.add(edit, BorderLayout.EAST);
+                picks.add(full(head));
+                picks.add(Theme.gap(12));
+                JPanel row = Theme.clear(new GridLayout(1, columns(), 20, 0));
+                for (Recommendation r : recs) {
+                    JPanel cell = Theme.clear(new BorderLayout(0, 6));
+                    JLabel why = Theme.label(r.getReason(), Font.BOLD, 12, Theme.GREEN);
+                    why.setIcon(Icons.get(r.getReason().startsWith("Near") ? "pin" : "heartFilled", 13, Theme.GREEN));
+                    why.setIconTextGap(6);
+                    why.setBorder(Theme.pad(0, 10, 0, 0));
+                    cell.add(why, BorderLayout.NORTH);
+                    cell.add(new GroupCard(app, r.getGroup()), BorderLayout.CENTER);
+                    row.add(cell);
+                }
+                for (int i = recs.size(); i < columns(); i++) row.add(Theme.clear(new BorderLayout()));
+                picks.add(full(row));
+                picks.add(Theme.gap(30));
+            }
+        }
+        picks.revalidate();
+        picks.repaint();
     }
 }

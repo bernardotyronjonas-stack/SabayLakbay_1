@@ -10,7 +10,7 @@ import java.awt.geom.RoundRectangle2D;
 /** Rounded button in the app's styles. */
 public class RoundButton extends JButton {
 
-    public enum Style { PRIMARY, ORANGE, OUTLINE, LIGHT, DANGER, GHOST }
+    public enum Style { PRIMARY, ORANGE, OUTLINE, LIGHT, DANGER, GHOST, DANGER_SOLID }
 
     private Style style;
 
@@ -45,7 +45,7 @@ public class RoundButton extends JButton {
 
     private void applyColors() {
         switch (style) {
-            case PRIMARY: case ORANGE: setForeground(Color.WHITE); break;
+            case PRIMARY: case ORANGE: case DANGER_SOLID: setForeground(Color.WHITE); break;
             case DANGER: setForeground(Theme.RED); break;
             default: setForeground(Theme.GREEN);
         }
@@ -71,6 +71,7 @@ public class RoundButton extends JButton {
             case LIGHT:   fill = hover ? new Color(0xD5EADF) : Theme.GREEN_LIGHT; break;
             case DANGER:  fill = hover ? Theme.RED_LIGHT : Color.WHITE; stroke = new Color(0xF0B4B4); break;
             case GHOST:   fill = hover ? Theme.GREEN_LIGHT : null; break;
+            case DANGER_SOLID: fill = hover ? new Color(0xC23030) : Theme.RED; break;
         }
         if (!isEnabled()) { fill = new Color(0xE5E7EB); stroke = null; }
         if (fill != null) { g2.setColor(fill); g2.fill(r); }

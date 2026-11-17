@@ -8,6 +8,7 @@ public class AdminStats {
     private int activeTrips;
     private int completedTrips;
     private int pendingReports;
+    private int pendingVerifications;
 
     public AdminStats() { }
 
@@ -24,4 +25,7 @@ public class AdminStats {
     /** Reports with status PENDING or UNDER_REVIEW */
     public int getPendingReports() { return pendingReports; }
     public void setPendingReports(int v) { pendingReports = v; }
+    /** ID checks waiting for an admin */
+    public int getPendingVerifications() { return pendingVerifications; }
+    public void setPendingVerifications(int v) { pendingVerifications = v; }
 }

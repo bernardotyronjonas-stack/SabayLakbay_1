@@ -8,7 +8,6 @@ import sabaylakbay_1.ui.Theme;
 import sabaylakbay_1.ui.components.*;
 
 import javax.swing.*;
-import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.io.File;
 import java.text.DecimalFormat;
@@ -115,12 +114,8 @@ public class AdminAnalyticsForm extends Page {
     }
 
     private void export() {
-        JFileChooser fc = new JFileChooser();
-        fc.setDialogTitle("Save summary report");
-        fc.setFileFilter(new FileNameExtensionFilter("CSV file (*.csv)", "csv"));
-        fc.setSelectedFile(new File("SabayLakbay-summary.csv"));
-        if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return;
-        File f = fc.getSelectedFile();
+        File f = sabaylakbay_1.ui.Dialogs.chooseSave(this, "Save summary report", "SabayLakbay-summary.csv");
+        if (f == null) return;
         Theme.run(this, () -> Backend.exportSummaryReport(months(), f));         // BACKEND
     }
 }

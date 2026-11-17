@@ -29,7 +29,7 @@ public class NotificationsForm extends Page {
         super(app);
         RoundButton markAll = new RoundButton("Mark all as read", RoundButton.Style.OUTLINE).icon("check").small();
         markAll.addActionListener(e -> {
-            // BACKEND: Backend.markAllRead() (button only for now)
+            // BACKEND: Backend.markAllRead() saves to MySQL
             if (Theme.run(this, () -> Backend.markAllRead(Backend.currentUserId()))) { refresh(); app.refreshBadges(); }
         });
         add(header("Notifications", "Updates about your requests and trips.", markAll), BorderLayout.NORTH);
@@ -42,7 +42,7 @@ public class NotificationsForm extends Page {
     public void refresh() {
         list.removeAll();
         try {
-            // BACKEND: Backend.getNotifications() (sample data for now)
+            // BACKEND: Backend.getNotifications() reads from MySQL
             List<Notification> items = Backend.getNotifications(Backend.currentUserId());
             if (items.isEmpty()) list.add(empty("bell", "You're all caught up."));
             for (Notification n : items) {

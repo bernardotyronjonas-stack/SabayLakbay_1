@@ -17,10 +17,10 @@ import java.awt.image.BufferedImage;
  */
 public abstract class AuthScreen extends JPanel {
 
-    protected static final int FORM_W = 320;
-    private static final int CARD_W = 376, FORM_TOP = 96;
+    protected static final int FORM_W = 352;
+    private static final int CARD_W = FORM_W + 64, FORM_TOP = 100;
 
-    protected final RoundPanel card = new RoundPanel(null, 16, Color.WHITE, null);
+    protected final RoundPanel card = new RoundPanel(null, 22, Color.WHITE, null);
     protected final JPanel form = Theme.clear(null);
     private JButton defaultButton;
 
@@ -46,23 +46,23 @@ public abstract class AuthScreen extends JPanel {
 
         JLabel tabLogin = tab("Log In", !registerTab);
         JLabel tabRegister = tab("Register", registerTab);
-        tabLogin.setBounds(28, 20, 160, 36);
-        tabRegister.setBounds(188, 20, 160, 36);
+        tabLogin.setBounds(32, 28, FORM_W / 2, 44);
+        tabRegister.setBounds(32 + FORM_W / 2, 28, FORM_W / 2, 44);
         tabLogin.addMouseListener(click(this::goToLogin));
         tabRegister.addMouseListener(click(this::goToRegister));
         TabLine line = new TabLine(registerTab);
-        line.setBounds(28, 58, 320, 3);
+        line.setBounds(32, 28, FORM_W, 44);
         card.add(tabLogin);
         card.add(tabRegister);
-        card.add(line);
+        card.add(line);         // added last = drawn behind the tab labels
         card.add(form);
         add(card);
     }
 
     /** Call at the end of the subclass constructor with the height of the form. */
     protected void finish(int formHeight) {
-        form.setBounds(28, FORM_TOP, FORM_W, formHeight);
-        card.setSize(CARD_W, FORM_TOP + formHeight + 30);
+        form.setBounds(32, FORM_TOP, FORM_W, formHeight);
+        card.setSize(CARD_W, FORM_TOP + formHeight + 34);
     }
 
     /** Enter key presses this button. */
@@ -97,23 +97,22 @@ public abstract class AuthScreen extends JPanel {
     }
 
     protected void goToRegister() {
-        if (this instanceof sabaylakbay_1.RegisterForm) return;
         AppWindow.show(new sabaylakbay_1.RegisterForm(), "SabayLakbay - Register");
     }
 
     // ================= helpers for the forms =================
 
     protected int addTitle(String title, String sub, int y) {
-        add(Theme.label(title, Font.BOLD, 24, Theme.TEXT_DARK), 0, y, FORM_W, 34);
-        add(Theme.label(sub, Font.PLAIN, 12, Theme.TEXT_GRAY), 0, y + 34, FORM_W, 18);
-        return y + 70;
+        add(Theme.label(title, Font.BOLD, 26, Theme.TEXT_DARK), 0, y, FORM_W, 36);
+        add(Theme.label(sub, Font.PLAIN, 14, Theme.TEXT_GRAY), 0, y + 38, FORM_W, 20);
+        return y + 78;
     }
 
     /** Label + input box. Returns the y position for the next row. */
     protected int addField(String label, JComponent input, int x, int w, int y) {
-        add(Theme.label(label, Font.BOLD, 12, Theme.TEXT_DARK), x, y, w, 18);
-        add(input, x, y + 22, w, 40);
-        return y + 76;
+        add(Theme.label(label, Theme.MEDIUM, 13, new Color(0x344054)), x, y, w, 18);
+        add(input, x, y + 24, w, 44);
+        return y + 82;
     }
 
     protected void add(JComponent c, int x, int y, int w, int h) {
@@ -125,14 +124,14 @@ public abstract class AuthScreen extends JPanel {
         JCheckBox c = new JCheckBox(text);
         c.setOpaque(false);
         c.setFocusPainted(false);
-        c.setFont(Theme.font(Font.PLAIN, 11));
+        c.setFont(Theme.font(Font.PLAIN, 13));
         c.setForeground(Theme.TEXT_GRAY);
         return c;
     }
 
     protected static JLabel footerLink(String text, String link, Runnable action) {
         JLabel l = Theme.label("<html>" + text + "<b><font color='#137A4F'>" + link + "</font></b></html>",
-                Font.PLAIN, 11, Theme.TEXT_GRAY);
+                Font.PLAIN, 13, Theme.TEXT_GRAY);
         l.setHorizontalAlignment(SwingConstants.CENTER);
         l.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         l.addMouseListener(click(action));
@@ -147,7 +146,7 @@ public abstract class AuthScreen extends JPanel {
 
     private static JLabel tab(String text, boolean active) {
         JLabel l = new JLabel(text, SwingConstants.CENTER);
-        l.setFont(Theme.font(active ? Font.BOLD : Font.PLAIN, 13));
+        l.setFont(Theme.font(active ? Font.BOLD : Theme.MEDIUM, 14));
         l.setForeground(active ? Theme.TEXT_DARK : Theme.TEXT_GRAY);
         l.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return l;
@@ -176,15 +175,22 @@ public abstract class AuthScreen extends JPanel {
         g2.dispose();
     }
 
-    /** Line under the tabs; dark part under the active tab. */
+    /** Segmented switch behind the two tabs: gray track, white pill under the active tab. */
     private static class TabLine extends JComponent {
         private final boolean right;
         TabLine(boolean right) { this.right = right; }
         @Override protected void paintComponent(Graphics g) {
-            g.setColor(new Color(0xE5E7EB));
-            g.fillRect(0, getHeight() - 1, getWidth(), 1);
-            g.setColor(Theme.TEXT_DARK);
-            g.fillRect(right ? getWidth() / 2 : 0, getHeight() - 2, getWidth() / 2, 2);
+            Graphics2D g2 = (Graphics2D) g.create();
+            Theme.aa(g2);
+            int w = getWidth(), h = getHeight();
+            g2.setColor(new Color(0xF2F4F7));
+            g2.fillRoundRect(0, 0, w, h, 14, 14);
+            int px = right ? w / 2 + 2 : 4, pw = w / 2 - 6;
+            g2.setColor(new Color(16, 24, 40, 18));
+            g2.fillRoundRect(px, 5, pw, h - 8, 10, 10);
+            g2.setColor(Color.WHITE);
+            g2.fillRoundRect(px, 4, pw, h - 9, 10, 10);
+            g2.dispose();
         }
     }
 }

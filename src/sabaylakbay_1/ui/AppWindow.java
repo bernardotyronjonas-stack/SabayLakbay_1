@@ -24,9 +24,15 @@ public final class AppWindow extends JFrame {
         setMinimumSize(new Dimension(1180, 720));
         setSize(1366, 820);
         root.setBackground(Theme.BG);
-        setContentPane(root);
+        // message bar on top (slides open for a few seconds), screens below it
+        JPanel frame = new JPanel(new BorderLayout());
+        frame.add(sabaylakbay_1.ui.components.Toast.create(), BorderLayout.NORTH);
+        frame.add(root, BorderLayout.CENTER);
+        setContentPane(frame);
         setLocationRelativeTo(null);
         setExtendedState(MAXIMIZED_BOTH);
+
+        setIconImages(appIcons());
 
         getRootPane().registerKeyboardAction(e -> toggleFullScreen(),
                 KeyStroke.getKeyStroke(KeyEvent.VK_F11, 0), JComponent.WHEN_IN_FOCUSED_WINDOW);
@@ -43,6 +49,7 @@ public final class AppWindow extends JFrame {
     /** Shows another screen with a fade, e.g. AppWindow.show(new LoginForm(), "SabayLakbay - Log In"). */
     public static void show(JComponent screen, String title) {
         if (instance == null) { start(screen, title); return; }
+        SubPage.closeAll();
         instance.setTitle(title);
         instance.root.replace(screen);
         SwingUtilities.invokeLater(screen::requestFocusInWindow);
@@ -57,5 +64,27 @@ public final class AppWindow extends JFrame {
         setUndecorated(fullScreen);
         setExtendedState(MAXIMIZED_BOTH);
         setVisible(true);
+    }
+
+    /** Taskbar / title bar icon: white mountain on a green rounded square. */
+    private static java.util.List<Image> appIcons() {
+        java.util.List<Image> list = new java.util.ArrayList<>();
+        for (int size : new int[]{16, 24, 32, 48, 64, 128}) {
+            java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(size, size, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2 = img.createGraphics();
+            Theme.aa(g2);
+            g2.setColor(Theme.GREEN);
+            g2.fillRoundRect(0, 0, size, size, size / 3, size / 3);
+            g2.translate(size * 0.18, size * 0.2);
+            g2.scale(size * 0.64 / 34.0, size * 0.6 / 30.0);
+            g2.setColor(Color.WHITE);
+            g2.setStroke(new BasicStroke(size < 32 ? 3.2f : 2.4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+            java.awt.geom.Path2D m = new java.awt.geom.Path2D.Float();
+            m.moveTo(2, 27); m.lineTo(12, 5); m.lineTo(19, 18); m.lineTo(24, 11); m.lineTo(32, 27); m.closePath();
+            g2.draw(m);
+            g2.dispose();
+            list.add(img);
+        }
+        return list;
     }
 }

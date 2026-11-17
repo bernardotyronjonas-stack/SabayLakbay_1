@@ -1,5 +1,6 @@
 package sabaylakbay_1;
 
+import sabaylakbay_1.ui.SubPage;
 import sabaylakbay_1.model.Report;
 import sabaylakbay_1.model.ReportTarget;
 import sabaylakbay_1.backend.Backend;
@@ -16,20 +17,20 @@ import java.awt.*;
  * Fields: reason (choose one) and details
  * Backend: Backend.report()
  */
-public class ReportForm extends JDialog {
+public class ReportForm extends SubPage {   // opens inside the main window, with a Back bar
 
     private static final String[] REASONS = {
             "Scam or fraud", "Fake profile or group", "Harassment or bullying",
             "Inappropriate content", "Safety concern", "Other"};
 
-    public ReportForm(Window owner, ReportTarget type, int targetId, String targetName) {
-        super(owner, "Report", ModalityType.APPLICATION_MODAL);
+    public ReportForm(Component owner, ReportTarget type, int targetId, String targetName) {
+        super(owner, "Report", null);
         JPanel p = Theme.vbox();
         p.setBackground(Color.WHITE);
         p.setOpaque(true);
         p.setBorder(Theme.pad(22, 24, 20, 24));
 
-        p.add(Theme.left(Theme.label("Report " + (type == ReportTarget.USER ? "user" : "group"), Font.BOLD, 18, Theme.TEXT_DARK)));
+        p.add(Theme.left(Theme.label("Report " + (type == ReportTarget.USER ? "user" : type == ReportTarget.GROUP ? "trip" : "message"), Font.BOLD, 18, Theme.TEXT_DARK)));
         p.add(Theme.gap(4));
         p.add(Theme.left(Theme.label(targetName, Font.PLAIN, 13, Theme.TEXT_GRAY)));
         p.add(Theme.gap(16));
@@ -66,7 +67,7 @@ public class ReportForm extends JDialog {
             rep.setReason(reason);
             rep.setDetails(details.getText().trim());
             if (reason == null) { Theme.error(this, "Please choose a reason."); return; }
-            // BACKEND: Backend.report() (button only for now)
+            // BACKEND: Backend.report() saves to MySQL
             if (Theme.run(this, () -> Backend.report(rep))) dispose();
         });
         JPanel btns = Theme.clear(new FlowLayout(FlowLayout.RIGHT, 8, 0));

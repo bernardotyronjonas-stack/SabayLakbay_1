@@ -13,7 +13,7 @@ public class Avatar extends JComponent {
     private static final Color[] COLORS = {
             new Color(0x0E7C66), new Color(0xD9822B), new Color(0x2B6CB0), new Color(0x9B3D8F),
             new Color(0xC2453A), new Color(0x4F7A28), new Color(0x6B5BD6), new Color(0x0F8FA6)};
-    private final User user;
+    private User user;
     private final int size;
 
     public Avatar(User user, int size) {
@@ -24,6 +24,9 @@ public class Avatar extends JComponent {
         setMinimumSize(d);
         setMaximumSize(d);
     }
+
+    /** Shows another person (or the same person after a new photo). */
+    public void setUser(User u) { user = u; repaint(); }
 
     @Override
     protected void paintComponent(Graphics g) {

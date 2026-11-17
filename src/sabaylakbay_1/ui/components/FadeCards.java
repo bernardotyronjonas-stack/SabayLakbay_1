@@ -53,6 +53,7 @@ public class FadeCards extends JPanel {
         add(screen, "screen");
         cards.show(this, "screen");
         revalidate();
+        repaint();
         startFade();
     }
 

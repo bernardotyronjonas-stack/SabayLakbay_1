@@ -1,5 +1,6 @@
 package sabaylakbay_1;
 
+import sabaylakbay_1.ui.SubPage;
 import sabaylakbay_1.backend.Backend;
 import sabaylakbay_1.model.*;
 import sabaylakbay_1.ui.AppWindow;
@@ -14,12 +15,12 @@ import java.awt.*;
  * REPORT REVIEW FORM (admin popup)
  * Opens from: a report row in AdminReportsForm or the Dashboard Overview
  * Shows: what was reported (user, group, or ONE message), the reason and details, who reported it
- * Admin decision: status (Pending / Under review / Resolved / Dismissed), action taken, notes,
+ * Admin decision: status (Pending / Under review / Resolved / Dismissed), action taken,
  *                 "Notify the affected user"
  * PRIVACY: for a reported message the admin only sees that one message, never the rest of the chat.
  * Backend: getUser, getGroup, getReportedMessage, updateReport
  */
-public class ReportReviewForm extends JDialog {
+public class ReportReviewForm extends SubPage {   // opens inside the main window, with a Back bar
 
     private static final String[] ACTIONS = {"No action needed", "Warning sent", "Message removed",
             "Group removed", "Account suspended", "Account removed"};
@@ -29,7 +30,6 @@ public class ReportReviewForm extends JDialog {
 
     private final JComboBox<String> status = new JComboBox<>();
     private final JComboBox<String> action = new JComboBox<>(ACTIONS);
-    private final TextAreaBox notes = new TextAreaBox("Notes for the record (what you checked, why you decided this)", 3);
     private final JCheckBox notify = new JCheckBox("Notify the affected user about the decision", true);
 
     public ReportReviewForm(AdminDashboard admin, Report report) {
@@ -79,8 +79,6 @@ public class ReportReviewForm extends JDialog {
             c.setFont(Theme.font(Font.PLAIN, 13));
             c.setPreferredSize(new Dimension(300, 38));
         }
-        notes.setText(report.getAdminNotes());
-        notes.setPreferredSize(new Dimension(600, 90));
         notify.setOpaque(false);
         notify.setFont(Theme.font(Font.PLAIN, 13));
 
@@ -88,8 +86,6 @@ public class ReportReviewForm extends JDialog {
         two.add(field("Status", status));
         two.add(field("Action taken", action));
         full(box, two);
-        box.add(Theme.gap(12));
-        full(box, field("Notes", notes));
         box.add(Theme.gap(10));
         box.add(Theme.left(notify));
 
@@ -136,7 +132,7 @@ public class ReportReviewForm extends JDialog {
                 JPanel t = Theme.vbox();
                 t.add(Theme.left(Theme.row(8, Theme.label(u.getFullName(), Font.BOLD, 14, Theme.TEXT_DARK),
                         AdminDashboard.accountChip(u.getStatus()))));
-                // BACKEND: Backend.countReportsAgainstUser() (sample data for now)
+                // BACKEND: Backend.countReportsAgainstUser() reads from MySQL
                 t.add(Theme.left(Theme.label(u.getEmail() + "  \u2022  " + Backend.countReportsAgainstUser(u.getId())
                         + " report(s) in total", Font.PLAIN, 12, Theme.TEXT_GRAY)));
                 p.add(Theme.middleLeft(t));
@@ -174,7 +170,7 @@ public class ReportReviewForm extends JDialog {
                     t.add(Theme.left(Theme.label("This message was already deleted.", Font.ITALIC, 13, Theme.TEXT_GRAY)));
                 } else {
                     JPanel row = Theme.clear(new BorderLayout(10, 0));
-                    // BACKEND: Backend.getUser() (sample data for now)
+                    // BACKEND: Backend.getUser() reads from MySQL
                     row.add(new Avatar(Backend.getUser(m.getSenderId()), 34), BorderLayout.WEST);
                     JPanel b = Theme.vbox();
                     b.add(Theme.left(Theme.label(m.getSenderName() + "  \u2022  " + Theme.ago(m.getSentAt()),
@@ -200,9 +196,9 @@ public class ReportReviewForm extends JDialog {
             Theme.error(this, "Please record the action taken before resolving.");
             return;
         }
-        // BACKEND: Backend.updateReport() (button only for now)
+        // BACKEND: Backend.updateReport() saves to MySQL
         if (Theme.run(this, () -> Backend.updateReport(report.getId(), newStatus, act,
-                notes.getText().trim(), notify.isSelected()))) {                    // BACKEND
+                notify.isSelected()))) {                    // BACKEND
             dispose();
         }
     }

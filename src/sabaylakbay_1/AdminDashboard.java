@@ -1,5 +1,6 @@
 package sabaylakbay_1;
 
+import sabaylakbay_1.ui.SubPage;
 import sabaylakbay_1.backend.Backend;
 import sabaylakbay_1.model.AccountStatus;
 import sabaylakbay_1.model.Report;
@@ -19,10 +20,10 @@ import java.util.Map;
 
 /**
  * ADMIN DASHBOARD: opens after Log In when the account's role is ADMIN.
- * (Front end only: log in with the username "admin".)
  *
  * Left: dark sidebar. Right: the admin page you picked.
- * Pages: AdminOverviewForm, AdminUsersForm, AdminReportsForm, AdminAnalyticsForm
+ * Pages: AdminOverviewForm, AdminUsersForm, AdminVerificationsForm, AdminTripsForm, AdminReportsForm,
+ *        AdminAnnouncementsForm, AdminAnalyticsForm, AdminLogForm
  * Popups: AdminUserDetailForm, ReportReviewForm
  */
 public class AdminDashboard extends JPanel {
@@ -32,8 +33,12 @@ public class AdminDashboard extends JPanel {
     private static final String[][] MENU = {
             {"OVERVIEW", "Dashboard", "grid"},
             {"USERS", "User Management", "users"},
+            {"VERIFY", "ID Verifications", "shield"},
+            {"TRIPS", "Trips", "map"},
             {"REPORTS", "Reports", "flag"},
-            {"ANALYTICS", "Analytics", "chart"}};
+            {"ANNOUNCE", "Announcements", "megaphone"},
+            {"ANALYTICS", "Analytics", "chart"},
+            {"LOG", "Activity Log", "note"}};
 
     private final Sidebar sidebar;
     private final FadeCards content = new FadeCards(true);
@@ -44,17 +49,22 @@ public class AdminDashboard extends JPanel {
 
     public AdminDashboard() {
         super(new BorderLayout());
-        sidebar = new Sidebar(ADMIN_DARK, "ADMIN PANEL", MENU, this::showPage, "Administrator", "logout", this::logout);
+        sidebar = new Sidebar(Color.WHITE, "ADMIN PANEL", MENU, this::showPage, "Administrator", "logout", this::logout);
         content.setBackground(Theme.BG);
 
         reportsForm = new AdminReportsForm(this);
         addPage("OVERVIEW", new AdminOverviewForm(this));
         addPage("USERS", new AdminUsersForm(this));
+        addPage("VERIFY", new AdminVerificationsForm(this));
+        addPage("TRIPS", new AdminTripsForm(this));
         addPage("REPORTS", reportsForm);
+        addPage("ANNOUNCE", new AdminAnnouncementsForm(this));
         addPage("ANALYTICS", new AdminAnalyticsForm(this));
+        addPage("LOG", new AdminLogForm(this));
 
         add(sidebar, BorderLayout.WEST);
         add(content, BorderLayout.CENTER);
+        SubPage.setArea(content);    // detail pages (trip details, profiles...) open over this area
         showPage("OVERVIEW");
     }
 
@@ -66,6 +76,7 @@ public class AdminDashboard extends JPanel {
     // ===== navigation used by the admin pages =====
 
     public void showPage(String key) {
+        SubPage.closeAll();          // leaving the page closes any open detail page
         sidebar.setSelected(key);
         pages.get(key).refresh();
         if (!key.equals(current)) content.show(key);
@@ -97,13 +108,15 @@ public class AdminDashboard extends JPanel {
     }
 
     public void refreshBadges() {
-        // BACKEND: Backend.getAdminStats() (sample data for now)
-        sidebar.setBadge("REPORTS", Backend.getAdminStats().getPendingReports());
+        // BACKEND: Backend.getAdminStats() reads from MySQL
+        sabaylakbay_1.model.AdminStats s = Backend.getAdminStats();
+        sidebar.setBadge("REPORTS", s.getPendingReports());
+        sidebar.setBadge("VERIFY", s.getPendingVerifications());
     }
 
     public void logout() {
-        if (!Theme.confirm(this, "Log out of the admin dashboard?")) return;
-        // BACKEND: Backend.logout() (button only for now)
+        if (!Theme.confirm(this, "Log out?", "You'll need to log in again to manage SabayLakbay.", "Log out", false)) return;
+        // BACKEND: Backend.logout() saves to MySQL
         Backend.logout();
         AppWindow.show(new LoginForm(), "SabayLakbay - Log In");
     }

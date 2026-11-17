@@ -2,6 +2,7 @@ package sabaylakbay_1;
 
 import sabaylakbay_1.model.Message;
 import sabaylakbay_1.model.TravelGroup;
+import sabaylakbay_1.model.ReportTarget;
 import sabaylakbay_1.model.User;
 import sabaylakbay_1.backend.Backend;
 import sabaylakbay_1.ui.Icons;
@@ -20,7 +21,7 @@ import java.util.List;
  * MESSAGES FORM (Communication)
  * Opens from: sidebar "Messages", "Group Chat" buttons, "Contact creator"
  * Left: group chats + direct messages. Right: chat history and the message box
- * The creator can tick "Post as announcement"
+ * The organizer can tick "Post as announcement". Right-click someone else's group message to report it.
  * Backend: getGroupMessages, sendGroupMessage, getDirectMessages, getDirectContacts, sendDirectMessage
  */
 public class MessagesForm extends Page {
@@ -90,9 +91,9 @@ public class MessagesForm extends Page {
     private List<TravelGroup> chatGroups() {
         int me = Backend.currentUserId();
         List<TravelGroup> out = new ArrayList<>();
-        // BACKEND: Backend.getGroupsCreatedBy() (sample data for now)
+        // BACKEND: Backend.getGroupsCreatedBy() reads from MySQL
         for (TravelGroup g : Backend.getGroupsCreatedBy(me)) if (!g.isCancelled()) out.add(g);
-        // BACKEND: Backend.getGroupsJoinedBy() (sample data for now)
+        // BACKEND: Backend.getGroupsJoinedBy() reads from MySQL
         for (TravelGroup g : Backend.getGroupsJoinedBy(me)) if (!g.isCancelled()) out.add(g);
         return out;
     }
@@ -103,12 +104,12 @@ public class MessagesForm extends Page {
         convList.removeAll();
         try {
             List<TravelGroup> groups = chatGroups();
-            // BACKEND: Backend.getDirectContacts() (sample data for now)
+            // BACKEND: Backend.getDirectContacts() reads from MySQL
             List<User> contacts = new ArrayList<>(Backend.getDirectContacts(me));
             if (extraContact > 0 && contacts.stream().noneMatch(u -> u.getId() == extraContact)
-                    // BACKEND: Backend.isBlocked() (sample data for now)
+                    // BACKEND: Backend.isBlocked() reads from MySQL
                     && !Backend.isBlocked(me, extraContact))
-                // BACKEND: Backend.getUser() (sample data for now)
+                // BACKEND: Backend.getUser() reads from MySQL
                 contacts.add(0, Backend.getUser(extraContact));
 
             if (groupId == 0 && userId == 0) {
@@ -119,7 +120,7 @@ public class MessagesForm extends Page {
             convList.add(Theme.left(sectionLabel("GROUP CHATS")));
             if (groups.isEmpty()) convList.add(Theme.left(Theme.label("  Join a group to chat.", Font.PLAIN, 12, Theme.HINT)));
             for (TravelGroup g : groups) {
-                // BACKEND: Backend.getGroupMessages() (sample data for now)
+                // BACKEND: Backend.getGroupMessages() reads from MySQL
                 List<Message> msgs = Backend.getGroupMessages(g.getId());
                 Message last = msgs.isEmpty() ? null : msgs.get(msgs.size() - 1);
                 ImageBox icon = new ImageBox(g.getImagePath(), g.getTitle(), 40, true);
@@ -130,7 +131,7 @@ public class MessagesForm extends Page {
             convList.add(Theme.left(sectionLabel("DIRECT MESSAGES")));
             if (contacts.isEmpty()) convList.add(Theme.left(Theme.label("  No direct messages yet.", Font.PLAIN, 12, Theme.HINT)));
             for (User u : contacts) {
-                // BACKEND: Backend.getDirectMessages() (sample data for now)
+                // BACKEND: Backend.getDirectMessages() reads from MySQL
                 List<Message> msgs = Backend.getDirectMessages(me, u.getId());
                 Message last = msgs.isEmpty() ? null : msgs.get(msgs.size() - 1);
                 convList.add(convItem(new Avatar(u, 40), u.getFullName(), last, u.getId() == userId,
@@ -180,7 +181,7 @@ public class MessagesForm extends Page {
         List<Message> msgs;
 
         if (groupId > 0) {
-            // BACKEND: Backend.getGroup() (sample data for now)
+            // BACKEND: Backend.getGroup() reads from MySQL
             TravelGroup g = Backend.getGroup(groupId);
             JPanel t = Theme.vbox();
             t.add(Theme.left(Theme.label(g.getTitle(), Font.BOLD, 15, Theme.TEXT_DARK)));
@@ -189,34 +190,35 @@ public class MessagesForm extends Page {
             RoundButton details = new RoundButton("Trip details", RoundButton.Style.OUTLINE).small();
             details.addActionListener(e -> app.openTrip(groupId));
             chatHeader.add(details, BorderLayout.EAST);
-            // BACKEND: Backend.getGroupMessages() (sample data for now)
+            // BACKEND: Backend.getGroupMessages() reads from MySQL
             msgs = Backend.getGroupMessages(groupId);
             announce.setVisible(g.getCreatorId() == me);
             announce.setSelected(false);
             setInputEnabled(true);
         } else if (userId > 0) {
-            // BACKEND: Backend.getUser() (sample data for now)
+            // BACKEND: Backend.getUser() reads from MySQL
             User u = Backend.getUser(userId);
             JPanel t = Theme.row(10, new Avatar(u, 34));
             JPanel tt = Theme.vbox();
             tt.add(Theme.left(Theme.label(u.getFullName(), Font.BOLD, 15, Theme.TEXT_DARK)));
-            // BACKEND: Backend.getAverageRating() (sample data for now)
+            // BACKEND: Backend.getAverageRating() reads from MySQL
             tt.add(Theme.left(Theme.label(Theme.stars(Backend.getAverageRating(userId)), Font.PLAIN, 12, Theme.TEXT_GRAY)));
             t.add(tt);
             chatHeader.add(t, BorderLayout.WEST);
             RoundButton profile = new RoundButton("View profile", RoundButton.Style.OUTLINE).small();
             profile.addActionListener(e -> app.openUserProfile(userId));
             chatHeader.add(Theme.row(8, profile), BorderLayout.EAST);
-            // BACKEND: Backend.getDirectMessages() (sample data for now)
+            // BACKEND: Backend.getDirectMessages() reads from MySQL
             msgs = Backend.getDirectMessages(me, userId);
             announce.setVisible(false);
-            // BACKEND: Backend.isBlocked() (sample data for now)
+            // BACKEND: Backend.isBlocked() reads from MySQL
             boolean blocked = Backend.isBlocked(me, userId) || Backend.isBlocked(userId, me);
             setInputEnabled(!blocked);
         } else {
             messagesBox.add(empty("chat", "No conversations yet."));
             setInputEnabled(false);
             messagesBox.revalidate();
+            messagesBox.repaint();
             return;
         }
 
@@ -233,6 +235,7 @@ public class MessagesForm extends Page {
             messagesBox.add(Theme.gap(6));
         }
         chatHeader.revalidate();
+        chatHeader.repaint();
         messagesBox.revalidate();
         messagesBox.repaint();
         SwingUtilities.invokeLater(() -> {
@@ -260,6 +263,16 @@ public class MessagesForm extends Page {
                 : Theme.label(m.getContent(), Font.PLAIN, 13, fg);
         b.add(text);
         b.setAlignmentX(mine ? RIGHT_ALIGNMENT : LEFT_ALIGNMENT);
+        if (!mine && groupId > 0) {
+            // right-click someone else's group message to report it
+            b.setToolTipText("Right-click to report this message");
+            JPopupMenu menu = new JPopupMenu();
+            JMenuItem report = new JMenuItem("Report this message");
+            report.addActionListener(e -> new ReportForm(SwingUtilities.getWindowAncestor(this), ReportTarget.MESSAGE,
+                    m.getId(), "Message from " + m.getSenderName()).setVisible(true));
+            menu.add(report);
+            b.setComponentPopupMenu(menu);
+        }
         JPanel bw = Theme.clear(new FlowLayout(mine ? FlowLayout.RIGHT : FlowLayout.LEFT, 0, 2));
         bw.add(b);
         bw.setAlignmentX(LEFT_ALIGNMENT);
@@ -273,7 +286,7 @@ public class MessagesForm extends Page {
         if (!mine) {
             JPanel withAvatar = Theme.clear(new BorderLayout(8, 0));
             JPanel av = Theme.clear(new BorderLayout());
-            // BACKEND: Backend.getUser() (sample data for now)
+            // BACKEND: Backend.getUser() reads from MySQL
             av.add(showName ? new Avatar(Backend.getUser(m.getSenderId()), 30) : Box.createHorizontalStrut(30), BorderLayout.NORTH);
             withAvatar.add(av, BorderLayout.WEST);
             withAvatar.add(col);
@@ -306,9 +319,9 @@ public class MessagesForm extends Page {
         if (text.isEmpty()) return;
         int me = Backend.currentUserId();
         boolean ok = groupId > 0
-                // BACKEND: Backend.sendGroupMessage() (button only for now)
+                // BACKEND: Backend.sendGroupMessage() saves to MySQL
                 ? Theme.run(this, () -> Backend.sendGroupMessage(groupId, me, text, announce.isSelected()))
-                // BACKEND: Backend.sendDirectMessage() (button only for now)
+                // BACKEND: Backend.sendDirectMessage() saves to MySQL
                 : Theme.run(this, () -> Backend.sendDirectMessage(me, userId, text));
         if (ok) {
             input.setText("");

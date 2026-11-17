@@ -5,77 +5,86 @@ import sabaylakbay_1.ui.Theme;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.RoundRectangle2D;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 /**
- * Small dark note that fades in at the bottom of the window and fades out after a few seconds.
- * Toast.show("Saved") works from any screen or popup.
+ * Slim message bar across the top of the main window (part of the window, not floating).
+ * It slides open, stays a few seconds, then slides closed. Click it to close it sooner.
+ *   Toast.show("Saved");
  */
 public class Toast extends JComponent {
 
-    private static Toast current;
+    private static final int HEIGHT = 40;
+    private static Toast bar;            // the one bar of the app (made by AppWindow)
 
-    private final String text;
-    private float alpha;
+    private String text = "";
+    private float open;                  // 0 = hidden, 1 = fully shown
+    private long shownAt;
     private Timer timer;
 
-    private Toast(String text) {
-        this.text = text;
-        setFont(Theme.font(Font.BOLD, 13));
+    /** AppWindow puts this at the top of the window. */
+    public static Toast create() {
+        bar = new Toast();
+        return bar;
+    }
+
+    private Toast() {
+        setFont(Theme.font(Theme.MEDIUM, 13));
+        setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        addMouseListener(new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) { shownAt = 0; }
+        });
     }
 
     public static void show(String text) {
-        Window w = KeyboardFocusManager.getCurrentKeyboardFocusManager().getActiveWindow();
-        if (!(w instanceof RootPaneContainer)) {
-            for (Window x : Window.getWindows()) if (x.isShowing() && x instanceof RootPaneContainer) w = x;
-        }
-        if (!(w instanceof RootPaneContainer)) return;
-        JLayeredPane layer = ((RootPaneContainer) w).getLayeredPane();
-        if (current != null) current.close();
-        Toast t = new Toast(text);
-        current = t;
-        FontMetrics fm = t.getFontMetrics(t.getFont());
-        int tw = fm.stringWidth(text) + 70, th = 44;
-        t.setBounds((layer.getWidth() - tw) / 2, layer.getHeight() - th - 32, tw, th);
-        layer.add(t, JLayeredPane.POPUP_LAYER);
-        t.start();
+        if (bar == null) return;
+        SwingUtilities.invokeLater(() -> bar.start(text));
     }
 
-    private void start() {
-        long begin = System.currentTimeMillis();
-        timer = new Timer(15, e -> {
-            long ms = System.currentTimeMillis() - begin;
-            if (ms < 200) alpha = ms / 200f;                       // fade in
-            else if (ms < 2600) alpha = 1f;                        // stay
-            else if (ms < 3000) alpha = 1f - (ms - 2600) / 400f;   // fade out
-            else { close(); return; }
-            repaint();
-        });
+    private void start(String t) {
+        text = t;
+        shownAt = System.currentTimeMillis();
+        if (timer == null) {
+            timer = new Timer(15, e -> step());
+        }
         timer.start();
+        repaint();
     }
 
-    private void close() {
-        if (timer != null) timer.stop();
-        Container p = getParent();
-        if (p != null) {
-            p.remove(this);
-            p.repaint(getX(), getY(), getWidth(), getHeight());
+    private void step() {
+        boolean stay = System.currentTimeMillis() - shownAt < 3200;
+        float target = stay ? 1f : 0f;
+        open += (target - open) * 0.22f;
+        if (Math.abs(target - open) < 0.01f) {
+            open = target;
+            if (!stay) timer.stop();
         }
-        if (current == this) current = null;
+        revalidate();
+        repaint();
+        SwingUtilities.invokeLater(sabaylakbay_1.ui.SubPage::relayout);   // keep open detail pages in place
+    }
+
+    @Override
+    public Dimension getPreferredSize() {
+        return new Dimension(10, Math.round(HEIGHT * open));
     }
 
     @Override
     protected void paintComponent(Graphics g) {
+        if (open <= 0.01f) return;
         Graphics2D g2 = (Graphics2D) g.create();
         Theme.aa(g2);
-        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.max(0f, Math.min(1f, alpha))));
-        g2.setColor(new Color(0x1E2A35));
-        g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), getHeight(), getHeight()));
-        Icons.get("info", 18, new Color(0x9FD9BE)).paintIcon(this, g2, 18, (getHeight() - 18) / 2);
-        g2.setColor(Color.WHITE);
+        int w = getWidth(), h = getHeight();
+        g2.setColor(Theme.GREEN);
+        g2.fillRect(0, 0, w, h);
         g2.setFont(getFont());
         FontMetrics fm = g2.getFontMetrics();
-        g2.drawString(text, 46, (getHeight() - fm.getHeight()) / 2 + fm.getAscent());
+        int tw = fm.stringWidth(text) + 26;
+        int x = (w - tw) / 2, y = h - HEIGHT;           // content slides down with the bar
+        Icons.get("check", 16, new Color(0xA7E3C6)).paintIcon(this, g2, x, y + (HEIGHT - 16) / 2);
+        g2.setColor(Color.WHITE);
+        g2.drawString(text, x + 26, y + (HEIGHT - fm.getHeight()) / 2 + fm.getAscent());
         g2.dispose();
     }
 }

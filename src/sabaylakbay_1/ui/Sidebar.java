@@ -5,6 +5,7 @@ import sabaylakbay_1.model.User;
 import sabaylakbay_1.ui.components.Avatar;
 import sabaylakbay_1.ui.components.Chip;
 import sabaylakbay_1.ui.components.LogoIcon;
+import sabaylakbay_1.ui.components.RoundPanel;
 
 import javax.swing.*;
 import java.awt.*;
@@ -32,35 +33,53 @@ public class Sidebar extends JPanel {
      * @param userIcon    icon on the right of the user row ("chevronRight" or "logout")
      * @param onUserClick called when the user row is clicked
      */
+    private final boolean dark;
+    private Avatar userAvatar;          // the logged-in user's photo at the bottom
+    private JLabel userName;
+
+    /** Shows the latest name and photo (call after the profile is edited). */
+    public void refreshUser() {
+        User me = Backend.getCurrentUser();
+        if (me == null) return;
+        userAvatar.setUser(me);
+        userName.setText(me.getFullName());
+        userName.getParent().revalidate();
+        repaint();
+    }       // dark background = white text, light background = dark text
+
     public Sidebar(Color bg, String tag, String[][] menu, Consumer<String> onNavigate,
                    String userSubtitle, String userIcon, Runnable onUserClick) {
         super(new BorderLayout());
+        dark = (bg.getRed() * 299 + bg.getGreen() * 587 + bg.getBlue() * 114) / 1000 < 128;
         setBackground(bg);
-        setPreferredSize(new Dimension(236, 0));
+        setPreferredSize(new Dimension(252, 0));
+        if (!dark) setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, Theme.BORDER));
 
         // logo
         JPanel top = Theme.vbox();
         JPanel logo = Theme.clear(new FlowLayout(FlowLayout.LEFT, 10, 0));
-        logo.add(new LogoIcon(Color.WHITE, 28, 25));
-        logo.add(Theme.label("SabayLakbay", Font.BOLD, 19, Color.WHITE));
-        logo.setBorder(Theme.pad(30, 10, tag == null ? 22 : 8, 0));
+        logo.add(new LogoIcon(dark ? Color.WHITE : Theme.GREEN, 28, 25));
+        logo.add(Theme.label("SabayLakbay", Font.BOLD, 20, dark ? Color.WHITE : Theme.TEXT_DARK));
+        logo.setBorder(Theme.pad(30, 14, tag == null ? 26 : 10, 0));
         top.add(Theme.left(logo));
         if (tag != null) {
-            JPanel t = Theme.row(0, new Chip(tag, new Color(255, 255, 255, 40), Color.WHITE));
-            t.setBorder(Theme.pad(0, 20, 16, 0));
+            JPanel t = Theme.row(0, dark ? new Chip(tag, new Color(255, 255, 255, 40), Color.WHITE)
+                                         : new Chip(tag, Theme.GREEN_LIGHT, Theme.GREEN));
+            t.setBorder(Theme.pad(0, 24, 18, 0));
             top.add(Theme.left(t));
         }
-        top.add(divider());
-        top.add(Theme.gap(20));
+        JLabel menuLabel = Theme.label("MENU", Font.BOLD, 11, dark ? new Color(255, 255, 255, 130) : Theme.HINT);
+        menuLabel.setBorder(Theme.pad(6, 30, 10, 0));
+        top.add(Theme.left(menuLabel));
 
         for (String[] m : menu) {
-            NavItem n = new NavItem(m[1], m[2]);
+            NavItem n = new NavItem(m[1], m[2], dark);
             n.addMouseListener(new MouseAdapter() {
                 @Override public void mouseClicked(MouseEvent e) { onNavigate.accept(m[0]); }
             });
             items.put(m[0], n);
             JPanel wrap = Theme.clear(new BorderLayout());
-            wrap.setBorder(Theme.pad(0, 16, 6, 16));
+            wrap.setBorder(Theme.pad(0, 16, 4, 16));
             wrap.add(n);
             wrap.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
             wrap.setAlignmentX(LEFT_ALIGNMENT);
@@ -70,20 +89,23 @@ public class Sidebar extends JPanel {
 
         // logged-in user at the bottom
         JPanel bottom = Theme.vbox();
-        bottom.add(divider());
-        JPanel userRow = Theme.clear(new BorderLayout(10, 0));
-        userRow.setBorder(Theme.pad(16, 18, 18, 14));
+        bottom.setBorder(Theme.pad(0, 16, 18, 16));
+        RoundPanel userRow = new RoundPanel(new BorderLayout(10, 0), 14,
+                dark ? new Color(255, 255, 255, 18) : Theme.BG, dark ? null : Theme.BORDER);
+        userRow.setBorder(Theme.pad(10, 12, 10, 12));
         userRow.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         userRow.addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) { onUserClick.run(); }
         });
         User me = Backend.getCurrentUser();
-        userRow.add(new Avatar(me, 38), BorderLayout.WEST);
+        userAvatar = new Avatar(me, 36);
+        userRow.add(userAvatar, BorderLayout.WEST);
         JPanel t = Theme.vbox();
-        t.add(Theme.left(Theme.label(me.getFullName(), Font.BOLD, 13, Color.WHITE)));
-        t.add(Theme.left(Theme.label(userSubtitle, Font.PLAIN, 11, new Color(255, 255, 255, 170))));
+        userName = Theme.label(me.getFullName(), Font.BOLD, 13, dark ? Color.WHITE : Theme.TEXT_DARK);
+        t.add(Theme.left(userName));
+        t.add(Theme.left(Theme.label(userSubtitle, Font.PLAIN, 12, dark ? new Color(255, 255, 255, 170) : Theme.TEXT_GRAY)));
         userRow.add(Theme.middleLeft(t), BorderLayout.CENTER);
-        JLabel icon = new JLabel(Icons.get(userIcon, 17, Color.WHITE));
+        JLabel icon = new JLabel(Icons.get(userIcon, 17, dark ? Color.WHITE : Theme.TEXT_GRAY));
         icon.setToolTipText("logout".equals(userIcon) ? "Log out" : "Profile");
         userRow.add(icon, BorderLayout.EAST);
         userRow.setAlignmentX(LEFT_ALIGNMENT);
@@ -93,7 +115,7 @@ public class Sidebar extends JPanel {
 
     private JComponent divider() {
         JPanel d = new JPanel();
-        d.setBackground(new Color(255, 255, 255, 40));
+        d.setBackground(dark ? new Color(255, 255, 255, 40) : Theme.BORDER);
         d.setPreferredSize(new Dimension(1, 1));
         d.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
         JPanel wrap = Theme.clear(new BorderLayout());
@@ -117,15 +139,17 @@ public class Sidebar extends JPanel {
     private static class NavItem extends JComponent {
         private final String text;
         private final String icon;
+        private final boolean dark;
         private boolean selected, hover;
         private float glow;          // 0 = no highlight, 1 = full highlight
         private int badge;
         private final Timer anim;
 
-        NavItem(String text, String icon) {
+        NavItem(String text, String icon, boolean dark) {
             this.text = text;
             this.icon = icon;
-            setPreferredSize(new Dimension(190, 44));
+            this.dark = dark;
+            setPreferredSize(new Dimension(200, 42));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             anim = new Timer(15, e -> {
                 float target = selected ? 1f : hover ? 0.5f : 0f;
@@ -147,17 +171,20 @@ public class Sidebar extends JPanel {
             Graphics2D g2 = (Graphics2D) g.create();
             Theme.aa(g2);
             if (glow > 0.01f) {
-                g2.setColor(new Color(255, 255, 255, Math.round(38 * glow)));
-                g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 12, 12));
+                if (dark) g2.setColor(new Color(255, 255, 255, Math.round(38 * glow)));
+                else if (selected) g2.setColor(mix(new Color(0xF2F4F7), Theme.GREEN_LIGHT, glow));
+                else g2.setColor(new Color(0xF2, 0xF4, 0xF7, Math.round(255 * Math.min(1f, glow * 2))));
+                g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 10, 10));
             }
-            if (selected) {
+            if (selected && dark) {
                 g2.setColor(Color.WHITE);
                 g2.fill(new RoundRectangle2D.Float(0, 12, 3, getHeight() - 24, 3, 3));
             }
-            Color c = selected ? Color.WHITE : new Color(255, 255, 255, 215);
-            Icons.get(icon, 19, c).paintIcon(this, g2, 14, (getHeight() - 19) / 2);
+            Color c = dark ? (selected ? Color.WHITE : new Color(255, 255, 255, 215))
+                           : (selected ? Theme.GREEN : new Color(0x475467));
+            Icons.get(icon, 20, c).paintIcon(this, g2, 12, (getHeight() - 20) / 2);
             g2.setColor(c);
-            g2.setFont(Theme.font(selected ? Font.BOLD : Font.PLAIN, 13));
+            g2.setFont(Theme.font(selected ? Font.BOLD : Theme.MEDIUM, 14));
             FontMetrics fm = g2.getFontMetrics();
             g2.drawString(text, 44, (getHeight() - fm.getHeight()) / 2 + fm.getAscent());
             if (badge > 0) {
@@ -173,5 +200,11 @@ public class Sidebar extends JPanel {
             }
             g2.dispose();
         }
-    }
+    
+        private static Color mix(Color a, Color b, float t) {
+            return new Color(Math.round(a.getRed() + (b.getRed() - a.getRed()) * t),
+                    Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * t),
+                    Math.round(a.getBlue() + (b.getBlue() - a.getBlue()) * t));
+        }
+}
 }

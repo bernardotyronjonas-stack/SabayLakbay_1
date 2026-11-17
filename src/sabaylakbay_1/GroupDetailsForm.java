@@ -1,9 +1,11 @@
 package sabaylakbay_1;
 
+import sabaylakbay_1.ui.SubPage;
 import sabaylakbay_1.model.*;
 import sabaylakbay_1.backend.Backend;
 import sabaylakbay_1.ui.Icons;
 import sabaylakbay_1.ui.AppWindow;
+import sabaylakbay_1.ui.Dialogs;
 import sabaylakbay_1.ui.Theme;
 import sabaylakbay_1.ui.components.*;
 
@@ -25,7 +27,7 @@ import java.util.List;
  *   - everyone:   Contact creator, Report this group
  * Backend: getGroup, getMembers, getRequest, sendJoinRequest, cancelJoinRequest, leaveGroup, cancelGroup
  */
-public class GroupDetailsForm extends JDialog {
+public class GroupDetailsForm extends SubPage {   // opens inside the main window, with a Back bar
 
     private final MainDashboard app;
     private final int groupId;
@@ -42,7 +44,7 @@ public class GroupDetailsForm extends JDialog {
 
     private void reload() {
         try {
-            // BACKEND: Backend.getGroup() (sample data for now)
+            // BACKEND: Backend.getGroup() reads from MySQL
             g = Backend.getGroup(groupId);
         } catch (RuntimeException ex) {
             Theme.error(app, ex.getMessage());
@@ -83,11 +85,11 @@ public class GroupDetailsForm extends JDialog {
         body.add(Theme.gap(18));
 
         // organizer
-        // BACKEND: Backend.getUser() (sample data for now)
+        // BACKEND: Backend.getUser() reads from MySQL
         User creator = Backend.getUser(g.getCreatorId());
-        // BACKEND: Backend.getAverageRating() (sample data for now)
+        // BACKEND: Backend.getAverageRating() reads from MySQL
         double rating = Backend.getAverageRating(creator.getId());
-        // BACKEND: Backend.getReviewsForUser() (sample data for now)
+        // BACKEND: Backend.getReviewsForUser() reads from MySQL
         int count = Backend.getReviewsForUser(creator.getId()).size();
         RoundPanel org = new RoundPanel(new BorderLayout(12, 0), 14, new Color(0xF8FAF9), Theme.BORDER);
         org.setBorder(Theme.pad(12, 14, 12, 14));
@@ -108,7 +110,7 @@ public class GroupDetailsForm extends JDialog {
         body.add(Theme.gap(20));
 
         // info tiles
-        JPanel info = Theme.clear(new GridLayout(0, 4, 12, 12));
+        JPanel info = Theme.clear(new GridLayout(0, 5, 12, 12));
         info.add(tile("wallet", "Budget / person", Theme.peso(g.getBudgetPerPerson())));
         info.add(tile("pin", "Location", g.getDestination()));
         info.add(tile("bus", "Transportation", g.getTransportMode()));
@@ -117,6 +119,8 @@ public class GroupDetailsForm extends JDialog {
         info.add(tile("clock", "Meeting time", Theme.time(g.getMeetingTime())));
         info.add(tile("users", "Participants", g.getCurrentMembers() + " of " + g.getMaxMembers()));
         info.add(tile("check", "Slots available", g.getSlotsAvailable() == 0 ? "Full" : String.valueOf(g.getSlotsAvailable())));
+        info.add(tile("grid", "Category", g.getCategory()));
+        info.add(tile("trend", "Difficulty", String.valueOf(g.getDifficulty())));
         body.add(fullWidth(info));
         body.add(Theme.gap(24));
 
@@ -140,8 +144,27 @@ public class GroupDetailsForm extends JDialog {
             body.add(Theme.gap(24));
         }
 
+        // where the trip goes (only when the organizer pinned it)
+        if (g.hasPin()) {
+            JPanel head = Theme.clear(new BorderLayout());
+            head.add(Theme.sectionTitle("Where you're going"), BorderLayout.WEST);
+            RoundButton google = new RoundButton("Open in Google Maps", RoundButton.Style.OUTLINE).icon("map").small();
+            google.addActionListener(e -> MapView.openInGoogleMaps(this, g.getLatitude(), g.getLongitude()));
+            RoundButton directions = new RoundButton("Directions").icon("send").small();
+            directions.addActionListener(e -> MapView.openDirections(this, g.getLatitude(), g.getLongitude()));
+            head.add(Theme.row(8, google, directions), BorderLayout.EAST);
+            body.add(fullWidth(head));
+            body.add(Theme.gap(10));
+            MapView map = new MapView(false);
+            map.setView(g.getLatitude(), g.getLongitude(), 10);
+            map.setPin(g.getLatitude(), g.getLongitude());
+            map.setPreferredSize(new Dimension(700, 280));
+            body.add(fullWidth(map));
+            body.add(Theme.gap(24));
+        }
+
         // members
-        // BACKEND: Backend.getMembers() (sample data for now)
+        // BACKEND: Backend.getMembers() reads from MySQL
         List<User> members = Backend.getMembers(groupId);
         body.add(Theme.left(Theme.sectionTitle("Members (" + members.size() + ")")));
         body.add(Theme.gap(10));
@@ -151,9 +174,9 @@ public class GroupDetailsForm extends JDialog {
         body.add(Theme.gap(24));
 
         // reviews
-        // BACKEND: Backend.getTripReviews() (sample data for now)
+        // BACKEND: Backend.getTripReviews() reads from MySQL
         List<Review> reviews = g.isCompleted() ? Backend.getTripReviews(groupId)
-                // BACKEND: Backend.getReviewsForUser() (sample data for now)
+                // BACKEND: Backend.getReviewsForUser() reads from MySQL
                 : Backend.getReviewsForUser(creator.getId());
         body.add(Theme.left(Theme.sectionTitle(g.isCompleted() ? "Trip reviews" : "What travelers say about " + creator.getFullName().split(" ")[0])));
         body.add(Theme.gap(10));
@@ -180,7 +203,7 @@ public class GroupDetailsForm extends JDialog {
         if (g.isCancelled()) return new Chip("Cancelled", Theme.RED_LIGHT, Theme.RED);
         if (g.isCompleted()) return new Chip("Completed", new Color(0xEEF0F2), Theme.TEXT_GRAY);
         if (g.isFull()) return new Chip("Full", Theme.RED_LIGHT, Theme.RED);
-        return new Chip("Open \u2022 " + g.getSlotsAvailable() + " slots left", Theme.GREEN_LIGHT, Theme.GREEN);
+        return new Chip("Open \u2022 " + g.getSlotsAvailable() + (g.getSlotsAvailable() == 1 ? " slot left" : " slots left"), Theme.GREEN_LIGHT, Theme.GREEN);
     }
 
     private static JComponent fullWidth(JComponent c) {
@@ -195,7 +218,7 @@ public class GroupDetailsForm extends JDialog {
         t.setBorder(Theme.pad(12, 14, 12, 14));
         t.add(Theme.left(Theme.iconText(icon, label, Theme.TEXT_GRAY)));
         t.add(Theme.gap(6));
-        t.add(Theme.left(Theme.wrapLabel(value == null || value.isBlank() ? "-" : value, 130, Font.BOLD, 13, Theme.TEXT_DARK)));
+        t.add(Theme.left(Theme.wrapLabel(value == null || value.isBlank() ? "-" : value, 120, Font.BOLD, 13, Theme.TEXT_DARK)));
         return t;
     }
 
@@ -213,7 +236,7 @@ public class GroupDetailsForm extends JDialog {
         r.add(new Avatar(u, 32), BorderLayout.WEST);
         JPanel t = Theme.vbox();
         t.add(Theme.left(Theme.label(u.getFullName() + (u.getId() == Backend.currentUserId() ? " (you)" : ""), Font.BOLD, 12, Theme.TEXT_DARK)));
-        // BACKEND: Backend.getAverageRating() (sample data for now)
+        // BACKEND: Backend.getAverageRating() reads from MySQL
         String sub = isCreator ? "Organizer" : Theme.stars(Backend.getAverageRating(u.getId()));
         t.add(Theme.left(Theme.label(sub, Font.PLAIN, 11, isCreator ? Theme.LINK : Theme.TEXT_GRAY)));
         r.add(Theme.middleLeft(t), BorderLayout.CENTER);
@@ -225,7 +248,7 @@ public class GroupDetailsForm extends JDialog {
     static JComponent reviewRow(Review rv) {
         RoundPanel r = new RoundPanel(new BorderLayout(12, 0), 12, Color.WHITE, Theme.BORDER);
         r.setBorder(Theme.pad(12, 14, 12, 14));
-        // BACKEND: Backend.getUser() (sample data for now)
+        // BACKEND: Backend.getUser() reads from MySQL
         r.add(new Avatar(Backend.getUser(rv.getReviewerId()), 34), BorderLayout.WEST);
         JPanel t = Theme.vbox();
         JPanel head = Theme.row(8, Theme.label(rv.getReviewerName(), Font.BOLD, 12, Theme.TEXT_DARK),
@@ -252,21 +275,21 @@ public class GroupDetailsForm extends JDialog {
         bar.add(price, BorderLayout.WEST);
 
         JPanel btns = Theme.clear(new FlowLayout(FlowLayout.RIGHT, 8, 4));
-        // BACKEND: Backend.getRequest() (sample data for now)
+        // BACKEND: Backend.getRequest() reads from MySQL
         JoinRequest req = Backend.getRequest(groupId, me);
-        // BACKEND: Backend.isMember() (sample data for now)
+        // BACKEND: Backend.isMember() reads from MySQL
         boolean member = Backend.isMember(groupId, me);
 
         if (g.isCancelled()) {
             btns.add(Theme.label("This trip was cancelled.", Font.BOLD, 13, Theme.RED));
         } else if (g.getCreatorId() == me) {
-            // BACKEND: Backend.getPendingRequestsForGroup() (sample data for now)
+            // BACKEND: Backend.getPendingRequestsForGroup() reads from MySQL
             int pending = Backend.getPendingRequestsForGroup(groupId).size();
             if (!g.isCompleted()) {
                 RoundButton cancel = new RoundButton("Cancel Group", RoundButton.Style.DANGER);
                 cancel.addActionListener(e -> {
-                    if (Theme.confirm(this, "Cancel \"" + g.getTitle() + "\"? All members will be notified.")
-                            // BACKEND: Backend.cancelGroup() (button only for now)
+                    if (Theme.confirm(this, "Cancel this trip?", "\"" + g.getTitle() + "\" will be cancelled and every member will be notified.", "Cancel trip", true)
+                            // BACKEND: Backend.cancelGroup() saves to MySQL
                             && Theme.run(this, () -> Backend.cancelGroup(groupId))) reload();
                 });
                 btns.add(cancel);
@@ -282,8 +305,8 @@ public class GroupDetailsForm extends JDialog {
             if (!g.isCompleted()) {
                 RoundButton leave = new RoundButton("Leave Group", RoundButton.Style.DANGER);
                 leave.addActionListener(e -> {
-                    if (Theme.confirm(this, "Leave \"" + g.getTitle() + "\"?")
-                            // BACKEND: Backend.leaveGroup() (button only for now)
+                    if (Theme.confirm(this, "Leave this trip?", "You'll be removed from \"" + g.getTitle() + "\". You can ask to join again while there are slots.", "Leave trip", true)
+                            // BACKEND: Backend.leaveGroup() saves to MySQL
                             && Theme.run(this, () -> Backend.leaveGroup(groupId, me))) reload();
                 });
                 btns.add(leave);
@@ -299,8 +322,8 @@ public class GroupDetailsForm extends JDialog {
             btns.add(Theme.label("Waiting for the creator to approve", Font.PLAIN, 12, Theme.TEXT_GRAY));
             RoundButton cancel = new RoundButton("Cancel Request", RoundButton.Style.DANGER);
             cancel.addActionListener(e -> {
-                if (Theme.confirm(this, "Cancel your join request?")
-                        // BACKEND: Backend.cancelJoinRequest() (button only for now)
+                if (Theme.confirm(this, "Cancel your request?", "The organizer won't see it anymore.", "Cancel request", true)
+                        // BACKEND: Backend.cancelJoinRequest() saves to MySQL
                         && Theme.run(this, () -> Backend.cancelJoinRequest(req.getId()))) reload();
             });
             btns.add(cancel);
@@ -328,13 +351,9 @@ public class GroupDetailsForm extends JDialog {
     private void sendRequest() {
         TextAreaBox msg = new TextAreaBox("Say hi to the creator (optional)", 4);
         msg.setPreferredSize(new Dimension(380, 110));
-        JPanel p = Theme.vbox();
-        p.add(Theme.left(Theme.label("Send a request to join \"" + g.getTitle() + "\"", Font.BOLD, 13, Theme.TEXT_DARK)));
-        p.add(Theme.gap(10));
-        p.add(Theme.left(msg));
-        int ok = JOptionPane.showConfirmDialog(this, p, "Join Request", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
-        if (ok != JOptionPane.OK_OPTION) return;
-        // BACKEND: Backend.sendJoinRequest() (button only for now)
+        if (!Dialogs.form(this, "send", "Join \"" + g.getTitle() + "\"",
+                g.getCreatorName() + " will see your profile and message, then approve or decline.", msg, "Send request")) return;
+        // BACKEND: Backend.sendJoinRequest() saves to MySQL
         if (Theme.run(this, () -> Backend.sendJoinRequest(groupId, Backend.currentUserId(), msg.getText().trim()))) reload();
     }
 }

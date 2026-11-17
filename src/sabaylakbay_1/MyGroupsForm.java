@@ -53,11 +53,11 @@ public class MyGroupsForm extends Page {
         int me = Backend.currentUserId();
         list.removeAll();
         try {
-            // BACKEND: Backend.getGroupsCreatedBy() (sample data for now)
+            // BACKEND: Backend.getGroupsCreatedBy() reads from MySQL
             List<TravelGroup> created = Backend.getGroupsCreatedBy(me);
-            // BACKEND: Backend.getGroupsJoinedBy() (sample data for now)
+            // BACKEND: Backend.getGroupsJoinedBy() reads from MySQL
             List<TravelGroup> joined = Backend.getGroupsJoinedBy(me);
-            // BACKEND: Backend.getRequestsByUser() (sample data for now)
+            // BACKEND: Backend.getRequestsByUser() reads from MySQL
             List<JoinRequest> reqs = Backend.getRequestsByUser(me);
             tabs.setTitle(0, "Created by me (" + created.size() + ")");
             tabs.setTitle(1, "Joined (" + joined.size() + ")");
@@ -143,8 +143,8 @@ public class MyGroupsForm extends Page {
             edit.addActionListener(e -> app.editGroup(g));
             RoundButton cancel = new RoundButton("Cancel", RoundButton.Style.DANGER).small();
             cancel.addActionListener(e -> {
-                if (Theme.confirm(this, "Cancel \"" + g.getTitle() + "\"? All members will be notified.")
-                        // BACKEND: Backend.cancelGroup() (button only for now)
+                if (Theme.confirm(this, "Cancel this trip?", "\"" + g.getTitle() + "\" will be cancelled and every member will be notified.", "Cancel trip", true)
+                        // BACKEND: Backend.cancelGroup() saves to MySQL
                         && Theme.run(this, () -> Backend.cancelGroup(g.getId()))) { refresh(); app.refreshBadges(); }
             });
             buttons = new JComponent[]{viewButton(g), edit, cancel};
@@ -155,7 +155,7 @@ public class MyGroupsForm extends Page {
 
         if (g.isCancelled() || g.isCompleted()) return card;
 
-        // BACKEND: Backend.getPendingRequestsForGroup() (sample data for now)
+        // BACKEND: Backend.getPendingRequestsForGroup() reads from MySQL
         List<JoinRequest> pending = Backend.getPendingRequestsForGroup(g.getId());
         card.add(Theme.gap(14));
         card.add(Theme.separator());
@@ -167,7 +167,7 @@ public class MyGroupsForm extends Page {
         for (JoinRequest r : pending) {
             JPanel row = Theme.clear(new BorderLayout(12, 0));
             row.setBorder(Theme.pad(6, 0, 6, 0));
-            // BACKEND: Backend.getUser() (sample data for now)
+            // BACKEND: Backend.getUser() reads from MySQL
             Avatar av = new Avatar(Backend.getUser(r.getUserId()), 36);
             av.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
             av.setToolTipText("View profile and reviews");
@@ -176,9 +176,11 @@ public class MyGroupsForm extends Page {
             });
             row.add(av, BorderLayout.WEST);
             JPanel t = Theme.vbox();
-            // BACKEND: Backend.getAverageRating() (sample data for now)
+            // BACKEND: Backend.getAverageRating() reads from MySQL
             double rating = Backend.getAverageRating(r.getUserId());
+            // BACKEND: Backend.getVerificationStatus() reads from MySQL
             t.add(Theme.left(Theme.row(8, Theme.label(r.getUserName(), Font.BOLD, 13, Theme.TEXT_DARK),
+                    Theme.verificationChip(Backend.getVerificationStatus(r.getUserId())),
                     Theme.label(Theme.stars(rating) + "  \u2022  " + Theme.ago(r.getCreatedAt()), Font.PLAIN, 11, Theme.TEXT_GRAY))));
             if (r.getMessage() != null && !r.getMessage().isBlank())
                 t.add(Theme.left(Theme.label("\"" + r.getMessage() + "\"", Font.ITALIC, 12, Theme.TEXT_GRAY)));
@@ -186,12 +188,12 @@ public class MyGroupsForm extends Page {
 
             RoundButton reject = new RoundButton("Reject", RoundButton.Style.DANGER).icon("x").small();
             reject.addActionListener(e -> {
-                // BACKEND: Backend.rejectRequest() (button only for now)
+                // BACKEND: Backend.rejectRequest() saves to MySQL
                 if (Theme.run(this, () -> Backend.rejectRequest(r.getId()))) { refresh(); app.refreshBadges(); }
             });
             RoundButton approve = new RoundButton("Approve").icon("check").small();
             approve.addActionListener(e -> {
-                // BACKEND: Backend.approveRequest() (button only for now)
+                // BACKEND: Backend.approveRequest() saves to MySQL
                 if (Theme.run(this, () -> Backend.approveRequest(r.getId()))) { refresh(); app.refreshBadges(); }
             });
             JPanel b = Theme.clear(new GridBagLayout());
@@ -216,8 +218,8 @@ public class MyGroupsForm extends Page {
         } else {
             RoundButton leave = new RoundButton("Leave", RoundButton.Style.DANGER).small();
             leave.addActionListener(e -> {
-                if (Theme.confirm(this, "Leave \"" + g.getTitle() + "\"?")
-                        // BACKEND: Backend.leaveGroup() (button only for now)
+                if (Theme.confirm(this, "Leave this trip?", "You'll be removed from \"" + g.getTitle() + "\".", "Leave trip", true)
+                        // BACKEND: Backend.leaveGroup() saves to MySQL
                         && Theme.run(this, () -> Backend.leaveGroup(g.getId(), Backend.currentUserId()))) refresh();
             });
             card.add(groupSummary(g, viewButton(g), trip, chat, leave));
@@ -244,8 +246,8 @@ public class MyGroupsForm extends Page {
         if (r.getStatus() == RequestStatus.PENDING) {
             RoundButton cancel = new RoundButton("Cancel Request", RoundButton.Style.DANGER).small();
             cancel.addActionListener(e -> {
-                if (Theme.confirm(this, "Cancel your request to join \"" + r.getGroupTitle() + "\"?")
-                        // BACKEND: Backend.cancelJoinRequest() (button only for now)
+                if (Theme.confirm(this, "Cancel your request?", "Your request to join \"" + r.getGroupTitle() + "\" will be withdrawn.", "Cancel request", true)
+                        // BACKEND: Backend.cancelJoinRequest() saves to MySQL
                         && Theme.run(this, () -> Backend.cancelJoinRequest(r.getId()))) refresh();
             });
             btns.add(cancel);

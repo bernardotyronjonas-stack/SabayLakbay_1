@@ -8,6 +8,8 @@ import java.time.LocalTime;
 public class TravelGroup {
 
     private int id;
+    private Difficulty difficulty;
+    private String category;
     private String title;
     private String destination;
     private LocalDate startDate;
@@ -21,6 +23,8 @@ public class TravelGroup {
     private String description;
     private String creatorNotes;
     private String imagePath;
+    private Double latitude;     // map pin, null = no pin
+    private Double longitude;
     private int creatorId;
     private String creatorName;
     private GroupStatus status;
@@ -39,8 +43,8 @@ public class TravelGroup {
         g.id = id; g.title = title; g.destination = destination; g.startDate = startDate; g.endDate = endDate;
         g.budgetPerPerson = budgetPerPerson; g.maxMembers = maxMembers; g.currentMembers = currentMembers;
         g.transportMode = transportMode; g.meetingPlace = meetingPlace; g.meetingTime = meetingTime;
-        g.description = description; g.creatorNotes = creatorNotes; g.imagePath = imagePath;
-        g.creatorId = creatorId; g.creatorName = creatorName; g.status = status; g.createdAt = createdAt;
+        g.description = description; g.creatorNotes = creatorNotes; g.imagePath = imagePath; g.latitude = latitude; g.longitude = longitude;
+        g.creatorId = creatorId; g.creatorName = creatorName; g.category = category; g.difficulty = difficulty; g.status = status; g.createdAt = createdAt;
         return g;
     }
 
@@ -70,6 +74,11 @@ public class TravelGroup {
     public void setDescription(String description) { this.description = description; }
     public String getCreatorNotes() { return creatorNotes; }
     public void setCreatorNotes(String creatorNotes) { this.creatorNotes = creatorNotes; }
+    public Double getLatitude() { return latitude; }
+    public void setLatitude(Double latitude) { this.latitude = latitude; }
+    public Double getLongitude() { return longitude; }
+    public void setLongitude(Double longitude) { this.longitude = longitude; }
+    public boolean hasPin() { return latitude != null && longitude != null; }
     public String getImagePath() { return imagePath; }
     public void setImagePath(String imagePath) { this.imagePath = imagePath; }
     public int getCreatorId() { return creatorId; }
@@ -80,4 +89,10 @@ public class TravelGroup {
     public void setStatus(GroupStatus status) { this.status = status; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+    /** Hiking, Beach, Food trip ... */
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+    /** EASY, MODERATE or HARD */
+    public Difficulty getDifficulty() { return difficulty; }
+    public void setDifficulty(Difficulty difficulty) { this.difficulty = difficulty; }
 }

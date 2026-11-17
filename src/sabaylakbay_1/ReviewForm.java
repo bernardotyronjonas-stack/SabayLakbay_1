@@ -4,6 +4,7 @@ import sabaylakbay_1.model.Review;
 import sabaylakbay_1.model.TravelGroup;
 import sabaylakbay_1.model.User;
 import sabaylakbay_1.backend.Backend;
+import sabaylakbay_1.ui.Dialogs;
 import sabaylakbay_1.ui.Theme;
 import sabaylakbay_1.ui.components.Avatar;
 import sabaylakbay_1.ui.components.RoundTextField;
@@ -30,13 +31,11 @@ public final class ReviewForm {
     public static boolean rateCompanions(Component parent, TravelGroup g) {
         int me = Backend.currentUserId();
         List<User> others = new ArrayList<>();
-        // BACKEND: Backend.getMembers() (sample data for now)
+        // BACKEND: Backend.getMembers() reads from MySQL
         for (User u : Backend.getMembers(g.getId())) if (u.getId() != me) others.add(u);
-        if (others.isEmpty()) { Theme.info(parent, "No companions to rate."); return false; }
+        if (others.isEmpty()) { Theme.info(parent, "There's no one else from this trip to rate."); return false; }
 
         JPanel p = Theme.vbox();
-        p.add(Theme.left(Theme.label("How were your travel companions on \"" + g.getTitle() + "\"?", Font.BOLD, 13, Theme.TEXT_DARK)));
-        p.add(Theme.gap(12));
         List<StarRating> stars = new ArrayList<>();
         List<RoundTextField> comments = new ArrayList<>();
         for (User u : others) {
@@ -56,8 +55,8 @@ public final class ReviewForm {
             stars.add(s);
             comments.add(note);
         }
-        if (JOptionPane.showConfirmDialog(parent, p, "Rate Companions", JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return false;
+        if (!Dialogs.form(parent, "star", "Rate your companions",
+                "How was traveling with them on \"" + g.getTitle() + "\"? Skip anyone you'd rather not rate.", p, "Save ratings")) return false;
 
         int saved = 0;
         for (int i = 0; i < others.size(); i++) {
@@ -69,11 +68,11 @@ public final class ReviewForm {
             r.setRating(stars.get(i).getValue());
             r.setComment(comments.get(i).getText().trim());
             final Review rr = r;
-            // BACKEND: Backend.addReview() (button only for now)
+            // BACKEND: Backend.addReview() saves to MySQL
             if (Theme.run(parent, () -> Backend.addReview(rr))) saved++;
         }
         if (saved == 0) { Theme.error(parent, "Pick at least one star rating."); return false; }
-        Backend.showConnected("addReview");
+        Backend.showConnected("Thanks! Your review was saved.");
         return true;
     }
 
@@ -83,13 +82,11 @@ public final class ReviewForm {
         TextAreaBox text = new TextAreaBox("What did you like? Anything to improve?", 5);
         text.setPreferredSize(new Dimension(400, 120));
         JPanel p = Theme.vbox();
-        p.add(Theme.left(Theme.label("Review \"" + g.getTitle() + "\"", Font.BOLD, 14, Theme.TEXT_DARK)));
-        p.add(Theme.gap(10));
         p.add(Theme.left(stars));
         p.add(Theme.gap(10));
         p.add(Theme.left(text));
-        if (JOptionPane.showConfirmDialog(parent, p, "Write a Review", JOptionPane.OK_CANCEL_OPTION,
-                JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return false;
+        if (!Dialogs.form(parent, "star", "Review \"" + g.getTitle() + "\"",
+                "Your review helps other travelers pick their next trip.", p, "Post review")) return false;
         Review r = new Review();
         r.setGroupId(g.getId());
         r.setReviewerId(Backend.currentUserId());
@@ -97,9 +94,9 @@ public final class ReviewForm {
         r.setRating(stars.getValue());
         r.setComment(text.getText().trim());
         if (r.getRating() == 0) { Theme.error(parent, "Please give 1 to 5 stars."); return false; }
-        // BACKEND: Backend.addReview() (button only for now)
+        // BACKEND: Backend.addReview() saves to MySQL
         if (Theme.run(parent, () -> Backend.addReview(r))) {
-            Backend.showConnected("addReview");
+            Backend.showConnected("Thanks! Your review was saved.");
             return true;
         }
         return false;

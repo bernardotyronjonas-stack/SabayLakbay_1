@@ -16,7 +16,6 @@ public class Report {
     private String targetName;
     private ReportStatus status;
     private String actionTaken;
-    private String adminNotes;
     private LocalDateTime reviewedAt;
 
     public Report() { }
@@ -47,9 +46,6 @@ public class Report {
     /** What the admin did, e.g. "Warning sent" */
     public String getActionTaken() { return actionTaken; }
     public void setActionTaken(String actionTaken) { this.actionTaken = actionTaken; }
-    /** Admin notes */
-    public String getAdminNotes() { return adminNotes; }
-    public void setAdminNotes(String adminNotes) { this.adminNotes = adminNotes; }
     /** When the admin last updated the report */
     public LocalDateTime getReviewedAt() { return reviewedAt; }
     public void setReviewedAt(LocalDateTime reviewedAt) { this.reviewedAt = reviewedAt; }

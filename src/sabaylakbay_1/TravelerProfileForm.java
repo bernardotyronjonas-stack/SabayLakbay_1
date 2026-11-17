@@ -1,5 +1,6 @@
 package sabaylakbay_1;
 
+import sabaylakbay_1.ui.SubPage;
 import sabaylakbay_1.model.ReportTarget;
 import sabaylakbay_1.model.Review;
 import sabaylakbay_1.model.User;
@@ -21,7 +22,7 @@ import java.util.List;
  * Buttons: Message, Block / Unblock, Report
  * Backend: getUser, getReviewsForUser, blockUser, unblockUser
  */
-public class TravelerProfileForm extends JDialog {
+public class TravelerProfileForm extends SubPage {   // opens inside the main window, with a Back bar
 
     private final MainDashboard app;
     private final int userId;
@@ -36,10 +37,10 @@ public class TravelerProfileForm extends JDialog {
     }
 
     private void reload() {
-        // BACKEND: Backend.getUser() (sample data for now)
+        // BACKEND: Backend.getUser() reads from MySQL
         User u = Backend.getUser(userId);
         int me = Backend.currentUserId();
-        // BACKEND: Backend.isBlocked() (sample data for now)
+        // BACKEND: Backend.isBlocked() reads from MySQL
         boolean blocked = Backend.isBlocked(me, userId);
 
         JPanel box = new Theme.ScrollableBox(null);
@@ -50,11 +51,12 @@ public class TravelerProfileForm extends JDialog {
         head.add(new Avatar(u, 72), BorderLayout.WEST);
         JPanel t = Theme.vbox();
         t.add(Theme.left(Theme.label(u.getFullName(), Font.BOLD, 20, Theme.TEXT_DARK)));
-        t.add(Theme.left(Theme.label("@" + u.getUsername(), Font.PLAIN, 12, Theme.TEXT_GRAY)));
+        // BACKEND: Backend.getVerificationStatus() reads from MySQL
+        t.add(Theme.left(Theme.verificationChip(Backend.getVerificationStatus(userId))));
         t.add(Theme.gap(6));
-        // BACKEND: Backend.getAverageRating() (sample data for now)
+        // BACKEND: Backend.getAverageRating() reads from MySQL
         double avg = Backend.getAverageRating(userId);
-        // BACKEND: Backend.getReviewsForUser() (sample data for now)
+        // BACKEND: Backend.getReviewsForUser() reads from MySQL
         List<Review> reviews = Backend.getReviewsForUser(userId);
         t.add(Theme.left(Theme.row(6, new StarRating((int) Math.round(avg), 15, false),
                 Theme.label(avg > 0 ? String.format("%.1f (%d)", avg, reviews.size()) : "No ratings yet", Font.PLAIN, 12, Theme.TEXT_GRAY))));
@@ -62,7 +64,7 @@ public class TravelerProfileForm extends JDialog {
         head.setAlignmentX(LEFT_ALIGNMENT);
         box.add(head);
         box.add(Theme.gap(14));
-        if (u.getBio() != null) box.add(Theme.left(Theme.wrapLabel(u.getBio(), 460, Font.PLAIN, 13, Theme.TEXT_DARK)));
+        box.add(Theme.left(Theme.label("Member since " + Theme.date(u.getCreatedAt().toLocalDate()), Font.PLAIN, 12, Theme.TEXT_GRAY)));
         box.add(Theme.gap(16));
 
         RoundButton msg = new RoundButton("Message").icon("chat").small();
@@ -71,10 +73,10 @@ public class TravelerProfileForm extends JDialog {
         RoundButton block = new RoundButton(blocked ? "Unblock" : "Block", RoundButton.Style.DANGER).icon("block").small();
         block.addActionListener(e -> {
             if (blocked) {
-                // BACKEND: Backend.unblockUser() (button only for now)
+                // BACKEND: Backend.unblockUser() saves to MySQL
                 if (Theme.run(this, () -> Backend.unblockUser(me, userId))) reload();
-            } else if (Theme.confirm(this, "Block " + u.getFullName() + "? They won't be able to message you, and you won't see their groups.")) {
-                // BACKEND: Backend.blockUser() (button only for now)
+            } else if (Theme.confirm(this, "Block " + u.getFullName() + "?", "They won't be able to message you, and you won't see their trips. You can unblock them in your profile.", "Block", true)) {
+                // BACKEND: Backend.blockUser() saves to MySQL
                 if (Theme.run(this, () -> Backend.blockUser(me, userId))) reload();
             }
         });
