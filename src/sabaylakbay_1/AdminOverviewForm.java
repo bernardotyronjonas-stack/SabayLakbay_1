@@ -147,7 +147,7 @@ public class AdminOverviewForm extends Page {
         Font f = Theme.font(head ? Font.BOLD : Font.PLAIN, head ? 11 : 13);
         Color col = head ? Theme.TEXT_GRAY : Theme.TEXT_DARK;
         c.gridx = 0;
-        JLabel rk = cell(rank, 28, f, head ? col : Theme.HINT);
+        JLabel rk = cell(rank, 28, f, head ? col : Theme.TEXT_GRAY);
         rk.setHorizontalAlignment(SwingConstants.LEFT);
         r.add(rk, c);
         JPanel who = Theme.row(10);

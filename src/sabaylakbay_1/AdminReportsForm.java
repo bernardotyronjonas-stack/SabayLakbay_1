@@ -83,7 +83,7 @@ public class AdminReportsForm extends Page {
         t.add(Theme.gap(5));
         String meta = "Reported by " + r.getReporterName() + "  \u2022  " + Theme.ago(r.getCreatedAt())
                 + (r.getActionTaken() != null ? "  \u2022  Action: " + r.getActionTaken() : "");
-        t.add(Theme.left(Theme.label(meta, Font.PLAIN, 12, Theme.HINT)));
+        t.add(Theme.left(Theme.label(meta, Font.PLAIN, 12, Theme.TEXT_GRAY)));
         p.add(Theme.middleLeft(t), BorderLayout.CENTER);
 
         RoundButton review = new RoundButton(r.getStatus() == ReportStatus.PENDING || r.getStatus() == ReportStatus.UNDER_REVIEW

@@ -153,7 +153,7 @@ public class AdminTripsForm extends Page {
                     + (g.getMeetingPlace() == null || g.getMeetingPlace().isBlank() ? "" : "  \u2022  Meet at " + g.getMeetingPlace()),
                     Font.PLAIN, 13, Theme.TEXT_GRAY)));
             if (g.getCreatedAt() != null)
-                t.add(Theme.left(Theme.label("Posted " + Theme.ago(g.getCreatedAt()), Font.PLAIN, 12, Theme.HINT)));
+                t.add(Theme.left(Theme.label("Posted " + Theme.ago(g.getCreatedAt()), Font.PLAIN, 12, Theme.TEXT_GRAY)));
             head.add(Theme.middleLeft(t), BorderLayout.CENTER);
             full(box, head);
 

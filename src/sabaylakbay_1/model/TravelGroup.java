@@ -45,6 +45,7 @@ public class TravelGroup {
         g.transportMode = transportMode; g.meetingPlace = meetingPlace; g.meetingTime = meetingTime;
         g.description = description; g.creatorNotes = creatorNotes; g.imagePath = imagePath; g.latitude = latitude; g.longitude = longitude;
         g.creatorId = creatorId; g.creatorName = creatorName; g.category = category; g.difficulty = difficulty; g.status = status; g.createdAt = createdAt;
+        g.meetingLatitude = meetingLatitude; g.meetingLongitude = meetingLongitude;
         return g;
     }
 
@@ -95,4 +96,12 @@ public class TravelGroup {
     /** EASY, MODERATE or HARD */
     public Difficulty getDifficulty() { return difficulty; }
     public void setDifficulty(Difficulty difficulty) { this.difficulty = difficulty; }
+
+    // map pin of the MEETING PLACE (used for "Groups near you")
+    private Double meetingLatitude, meetingLongitude;
+    public Double getMeetingLatitude() { return meetingLatitude; }
+    public void setMeetingLatitude(Double v) { this.meetingLatitude = v; }
+    public Double getMeetingLongitude() { return meetingLongitude; }
+    public void setMeetingLongitude(Double v) { this.meetingLongitude = v; }
+    public boolean hasMeetingPin() { return meetingLatitude != null && meetingLongitude != null; }
 }

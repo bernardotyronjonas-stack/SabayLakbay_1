@@ -116,7 +116,7 @@ public class AdminUsersForm extends Page {
         // BACKEND: Backend.countReportsAgainstUser() reads from MySQL
         int reports = Backend.countReportsAgainstUser(u.getId());
         c.gridx = 3; r.add(sized(reports > 0 ? new Chip(reports + " report" + (reports > 1 ? "s" : ""), Theme.RED_LIGHT, Theme.RED)
-                : Theme.label("None", Font.PLAIN, 12, Theme.HINT), COL[3]), c);
+                : Theme.label("None", Font.PLAIN, 12, Theme.TEXT_GRAY), COL[3]), c);
         c.gridx = 4; r.add(sized(AdminDashboard.accountChip(u.getStatus()), COL[4]), c);
 
         RoundButton view = new RoundButton("View", RoundButton.Style.OUTLINE).small();

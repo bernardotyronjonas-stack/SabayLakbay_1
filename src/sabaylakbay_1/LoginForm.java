@@ -22,7 +22,6 @@ public class LoginForm extends AuthScreen {
 
     private final RoundTextField txtUser = new RoundTextField("Enter your email");
     private final PasswordField txtPass = new PasswordField("Enter your password");
-    private final JCheckBox chkRemember = checkBox("Remember me");
 
     public LoginForm() {
         super(false);
@@ -31,7 +30,6 @@ public class LoginForm extends AuthScreen {
         y = addField("Email", txtUser, 0, FORM_W, y);
         y = addField("Password", txtPass, 0, FORM_W, y);
 
-        add(chkRemember, -4, y, 170, 22);
         JLabel forgot = Theme.link("Forgot password?", this::forgotPassword);
         forgot.setHorizontalAlignment(SwingConstants.RIGHT);
         add(forgot, FORM_W - 150, y, 150, 22);
@@ -72,12 +70,9 @@ public class LoginForm extends AuthScreen {
     }
 
     private void forgotPassword() {
-        String email = Dialogs.inputLine(this, "lock", "Forgot your password?",
-                "Enter the email of your account and we'll send you a reset link.", "you@email.com", "Send link");
-        if (email == null) return;
-        if (!email.contains("@")) { Theme.error(this, "Please enter a valid email."); return; }
-        // BACKEND: Backend.sendPasswordReset() saves to MySQL
-        Theme.run(this, () -> Backend.sendPasswordReset(email.trim()));
+        // There is no reset by email yet, so say so up front instead of asking for an email first.
+        Dialogs.message(this, Dialogs.Kind.INFO, "Forgot your password?",
+                "Resetting a password by email isn't available yet. Please contact a SabayLakbay admin to get back into your account.");
     }
 
     public static void main(String[] args) {

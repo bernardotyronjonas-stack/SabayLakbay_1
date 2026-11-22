@@ -165,8 +165,8 @@ public class RegisterForm extends JPanel {
         strength.setPreferredSize(new Dimension(400, 6));
         meter.add(fullWidth(strength));
         meter.add(Theme.gap(10));
-        JPanel rules = Theme.clear(new GridLayout(1, 3, 10, 0));
-        rules.add(ruleLen); rules.add(ruleNum); rules.add(ruleUpper);
+        // one left-aligned row with even gaps (3 equal columns didn't line up with the 4 bar parts)
+        JPanel rules = Theme.row(20, ruleLen, ruleNum, ruleUpper);
         meter.add(fullWidth(rules));
         meter.setBorder(new EmptyBorder(0, 0, 16, 0));
         p.add(fullWidth(meter));
@@ -453,7 +453,7 @@ public class RegisterForm extends JPanel {
         int n = interests.getSelected().size();
         if (n > 0) errInterests.setText(" ");
         interestCount.setText(n == 0 ? "Nothing picked yet" : n + (n == 1 ? " interest" : " interests") + " picked");
-        interestCount.setForeground(n == 0 ? Theme.HINT : Theme.GREEN);
+        interestCount.setForeground(n == 0 ? Theme.TEXT_GRAY : Theme.GREEN);
     }
 
     /** "917 123 4567", "09171234567" or "+63 917..." -> "9171234567", or null when it isn't a PH mobile number. */
@@ -511,15 +511,15 @@ public class RegisterForm extends JPanel {
     private static JLabel err() { return Theme.label(" ", Font.PLAIN, 12, Theme.RED); }
 
     private static JLabel rule(String text) {
-        JLabel l = Theme.label(text, Font.PLAIN, 12, Theme.HINT);
-        l.setIcon(Icons.get("check", 13, new Color(0xD0D5DD)));
+        JLabel l = Theme.label(text, Font.PLAIN, 12, Theme.TEXT_GRAY);     // TEXT_GRAY: readable (HINT was too light)
+        l.setIcon(Icons.get("check", 13, Theme.HINT));
         l.setIconTextGap(5);
         return l;
     }
 
     private static void mark(JLabel l, boolean ok) {
-        l.setForeground(ok ? Theme.GREEN : Theme.HINT);
-        l.setIcon(Icons.get("check", 13, ok ? Theme.GREEN : new Color(0xD0D5DD)));
+        l.setForeground(ok ? Theme.GREEN : Theme.TEXT_GRAY);
+        l.setIcon(Icons.get("check", 13, ok ? Theme.GREEN : Theme.HINT));
     }
 
     private static void onType(javax.swing.text.JTextComponent t, Runnable r) {
@@ -589,10 +589,10 @@ public class RegisterForm extends JPanel {
             Graphics2D g2 = (Graphics2D) g.create();
             Theme.aa(g2);
             int w = getWidth(), h = getHeight();
-            BufferedImage img = ImageBox.load("/images/mayon.jpg");
+            BufferedImage img = ImageBox.load(sabaylakbay_1.model.Photos.LOGIN);
             if (img != null) {
                 ImageBox.drawCover(g2, img, w, h);
-                g2.setPaint(new GradientPaint(0, 0, new Color(8, 40, 30, 225), 0, h, new Color(8, 40, 30, 170)));
+                g2.setPaint(new GradientPaint(0, 0, new Color(6, 34, 25, 200), 0, h, new Color(6, 34, 25, 135)));   // photo shows through
             } else {
                 g2.setPaint(new GradientPaint(0, 0, new Color(0x0B4F3A), w, h, new Color(0x123B2E)));
             }

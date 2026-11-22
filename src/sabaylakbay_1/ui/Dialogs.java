@@ -41,6 +41,11 @@ public final class Dialogs {
         return new Sheet(parent, Kind.QUESTION, null, title, subtitle, body, okText, "Cancel", false).open();
     }
 
+    /** Shows something (e.g. a big photo) with only a Close button. */
+    public static void view(Component parent, String icon, String title, String subtitle, JComponent body) {
+        new Sheet(parent, Kind.INFO, icon, title, subtitle, body, "Close", null, false).open();
+    }
+
     /** Same as form() but with a chosen icon in the badge, e.g. "calendar", "wallet", "star". */
     public static boolean form(Component parent, String icon, String title, String subtitle, JComponent body, String okText) {
         return new Sheet(parent, Kind.QUESTION, icon, title, subtitle, body, okText, "Cancel", false).open();

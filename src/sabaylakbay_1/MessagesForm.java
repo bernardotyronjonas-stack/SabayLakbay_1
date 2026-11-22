@@ -22,7 +22,9 @@ import java.util.List;
  * Opens from: sidebar "Messages", "Group Chat" buttons, "Contact creator"
  * Left: group chats + direct messages. Right: chat history and the message box
  * The organizer can tick "Post as announcement". Right-click someone else's group message to report it.
- * Backend: getGroupMessages, sendGroupMessage, getDirectMessages, getDirectContacts, sendDirectMessage
+ * Unread chats show a green count and bold text; opening a chat marks it read.
+ * Backend: getGroupMessages, sendGroupMessage, getDirectMessages, getDirectContacts, sendDirectMessage,
+ *          getUnreadGroupCounts, getUnreadDirectCounts, markGroupRead, markDirectRead
  */
 public class MessagesForm extends Page {
 
@@ -82,6 +84,17 @@ public class MessagesForm extends Page {
 
     public void selectGroup(int id) { groupId = id; userId = 0; }
 
+    /** True when this message belongs to the chat that is open right now. */
+    public boolean isOpen(Message m) {
+        return m.getGroupId() > 0 ? m.getGroupId() == groupId
+                : userId > 0 && m.getSenderId() == userId;
+    }
+
+    /** New messages arrived while this page is showing: reload, keeping what is typed in the box. */
+    public void liveUpdate() {
+        refresh();
+    }
+
     public void selectDirect(int id) {
         userId = id;
         groupId = 0;
@@ -116,26 +129,34 @@ public class MessagesForm extends Page {
                 if (!groups.isEmpty()) groupId = groups.get(0).getId();
                 else if (!contacts.isEmpty()) userId = contacts.get(0).getId();
             }
+            // the open chat is being read now; the rest keep their unread counts
+            // BACKEND: Backend.markGroupRead() / markDirectRead() save to MySQL
+            if (groupId > 0) Backend.markGroupRead(me, groupId);
+            if (userId > 0) Backend.markDirectRead(me, userId);
+            // BACKEND: Backend.getUnreadGroupCounts() / getUnreadDirectCounts() read from MySQL
+            java.util.Map<Integer, Integer> unreadGroups = Backend.getUnreadGroupCounts(me);
+            java.util.Map<Integer, Integer> unreadDirect = Backend.getUnreadDirectCounts(me);
 
             convList.add(Theme.left(sectionLabel("GROUP CHATS")));
-            if (groups.isEmpty()) convList.add(Theme.left(Theme.label("  Join a group to chat.", Font.PLAIN, 12, Theme.HINT)));
+            if (groups.isEmpty()) convList.add(Theme.left(Theme.label("  Join a group to chat.", Font.PLAIN, 12, Theme.TEXT_GRAY)));
             for (TravelGroup g : groups) {
                 // BACKEND: Backend.getGroupMessages() reads from MySQL
                 List<Message> msgs = Backend.getGroupMessages(g.getId());
                 Message last = msgs.isEmpty() ? null : msgs.get(msgs.size() - 1);
                 ImageBox icon = new ImageBox(g.getImagePath(), g.getTitle(), 40, true);
                 icon.setPreferredSize(new Dimension(40, 40));
-                convList.add(convItem(icon, g.getTitle(), last, g.getId() == groupId, () -> { selectGroup(g.getId()); refresh(); }));
+                convList.add(convItem(icon, g.getTitle(), last, g.getId() == groupId, unreadGroups.getOrDefault(g.getId(), 0),
+                        () -> { selectGroup(g.getId()); refresh(); }));
             }
             convList.add(Theme.gap(10));
             convList.add(Theme.left(sectionLabel("DIRECT MESSAGES")));
-            if (contacts.isEmpty()) convList.add(Theme.left(Theme.label("  No direct messages yet.", Font.PLAIN, 12, Theme.HINT)));
+            if (contacts.isEmpty()) convList.add(Theme.left(Theme.label("  No direct messages yet.", Font.PLAIN, 12, Theme.TEXT_GRAY)));
             for (User u : contacts) {
                 // BACKEND: Backend.getDirectMessages() reads from MySQL
                 List<Message> msgs = Backend.getDirectMessages(me, u.getId());
                 Message last = msgs.isEmpty() ? null : msgs.get(msgs.size() - 1);
                 convList.add(convItem(new Avatar(u, 40), u.getFullName(), last, u.getId() == userId,
-                        () -> { userId = u.getId(); groupId = 0; refresh(); }));
+                        unreadDirect.getOrDefault(u.getId(), 0), () -> { userId = u.getId(); groupId = 0; refresh(); }));
             }
             showChat();
         } catch (RuntimeException ex) {
@@ -143,15 +164,16 @@ public class MessagesForm extends Page {
         }
         convList.revalidate();
         convList.repaint();
+        app.refreshBadges();         // the Messages badge goes down after reading
     }
 
     private static JLabel sectionLabel(String s) {
-        JLabel l = Theme.label(s, Font.BOLD, 11, Theme.HINT);
+        JLabel l = Theme.label(s, Font.BOLD, 11, Theme.TEXT_GRAY);
         l.setBorder(Theme.pad(6, 8, 6, 0));
         return l;
     }
 
-    private JComponent convItem(JComponent icon, String name, Message last, boolean selected, Runnable onClick) {
+    private JComponent convItem(JComponent icon, String name, Message last, boolean selected, int unread, Runnable onClick) {
         RoundPanel p = new RoundPanel(new BorderLayout(10, 0), 12, selected ? Theme.GREEN_LIGHT : null, null);
         p.setBorder(Theme.pad(8, 8, 8, 8));
         p.add(icon, BorderLayout.WEST);
@@ -162,8 +184,14 @@ public class MessagesForm extends Page {
         top.setAlignmentX(LEFT_ALIGNMENT);
         t.add(top);
         String preview = last == null ? "No messages yet" : (last.getSenderId() == Backend.currentUserId() ? "You: " : "") + last.getContent();
-        if (preview.length() > 34) preview = preview.substring(0, 34) + "...";
-        t.add(Theme.left(Theme.label(preview, Font.PLAIN, 12, Theme.TEXT_GRAY)));
+        int max = unread > 0 ? 28 : 34;
+        if (preview.length() > max) preview = preview.substring(0, max) + "...";
+        JPanel bottom = Theme.clear(new BorderLayout(6, 0));
+        bottom.add(Theme.label(preview, unread > 0 ? Font.BOLD : Font.PLAIN, 12, unread > 0 ? Theme.TEXT_DARK : Theme.TEXT_GRAY),
+                BorderLayout.CENTER);
+        if (unread > 0) bottom.add(new Chip(unread > 99 ? "99+" : String.valueOf(unread), Theme.GREEN, Color.WHITE), BorderLayout.EAST);
+        bottom.setAlignmentX(LEFT_ALIGNMENT);
+        t.add(bottom);
         p.add(t);
         p.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         p.addMouseListener(new MouseAdapter() {
@@ -277,7 +305,7 @@ public class MessagesForm extends Page {
         bw.add(b);
         bw.setAlignmentX(LEFT_ALIGNMENT);
         col.add(bw);
-        JLabel time = Theme.label(Theme.ago(m.getSentAt()), Font.PLAIN, 10, Theme.HINT);
+        JLabel time = Theme.label(Theme.ago(m.getSentAt()), Font.PLAIN, 10, Theme.TEXT_GRAY);
         JPanel tw = Theme.clear(new FlowLayout(mine ? FlowLayout.RIGHT : FlowLayout.LEFT, 4, 0));
         tw.add(time);
         tw.setAlignmentX(LEFT_ALIGNMENT);

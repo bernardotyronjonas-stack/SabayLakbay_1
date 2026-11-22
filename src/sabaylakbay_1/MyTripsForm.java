@@ -21,9 +21,9 @@ import java.util.List;
  * MY TRIPS FORM (Trip Planning)
  * Opens from: sidebar "My Trips"
  * Left: Upcoming / Completed trips. Right: details of the selected trip
- * Shows: meeting place and time, estimated expenses, itinerary (Add activity for the creator),
+ * Shows: meeting place and time, estimated expenses, itinerary (Add / edit stops with photo and map pin for the creator),
  *        trip updates (announcements), and for completed trips: Rate companions / Write a review
- * Backend: getItinerary, addActivity, deleteActivity, getExpenses, addExpense, deleteExpense, getAnnouncements
+ * Backend: getItinerary, addActivity, updateActivity, deleteActivity, getExpenses, addExpense, deleteExpense, getAnnouncements
  */
 public class MyTripsForm extends Page {
 
@@ -285,58 +285,26 @@ public class MyTripsForm extends Page {
     }
 
     private JComponent itineraryCard(TravelGroup g, boolean organizer) {
+        boolean canEdit = organizer && !g.isCompleted();
         JComponent addBtn = null;
-        if (organizer && !g.isCompleted()) {
-            RoundButton b = new RoundButton("Add activity", RoundButton.Style.LIGHT).icon("plus").small();
+        if (canEdit) {
+            RoundButton b = new RoundButton("Add a stop", RoundButton.Style.LIGHT).icon("plus").small();
             b.addActionListener(e -> addActivity(g));
             addBtn = b;
         }
         RoundPanel p = card("Itinerary", "map", addBtn);
         // BACKEND: Backend.getItinerary() reads from MySQL
         List<Activity> acts = Backend.getItinerary(g.getId());
-        if (acts.isEmpty())
-            p.add(Theme.left(Theme.label(organizer ? "No activities yet. Add the first one." : "The organizer hasn't added activities yet.",
-                    Font.PLAIN, 13, Theme.TEXT_GRAY)));
-        LocalDate day = null;
-        for (Activity a : acts) {
-            if (!a.getDate().equals(day)) {
-                day = a.getDate();
-                long n = ChronoUnit.DAYS.between(g.getStartDate(), day) + 1;
-                if (p.getComponentCount() > 2) p.add(Theme.gap(10));
-                p.add(Theme.left(Theme.label("Day " + n + "  \u2022  " + Theme.day(day), Font.BOLD, 13, Theme.GREEN)));
-                p.add(Theme.gap(6));
+        ItineraryView list = new ItineraryView();
+        list.show(acts, g.getStartDate(), !canEdit ? null : new ItineraryView.Actions() {
+            @Override public void edit(Activity a) { editActivity(g, a); }
+            @Override public void remove(Activity a) {
+                if (Theme.confirm(MyTripsForm.this, "Remove this stop?", "\"" + a.getTitle() + "\" will be taken off the itinerary.", "Remove", true)
+                        // BACKEND: Backend.deleteActivity() saves to MySQL
+                        && Theme.run(MyTripsForm.this, () -> Backend.deleteActivity(a.getId()))) refresh();
             }
-            JPanel r = Theme.clear(new BorderLayout(14, 0));
-            r.setBorder(Theme.pad(6, 0, 6, 0));
-            JLabel time = Theme.label(Theme.time(a.getTime()), Font.BOLD, 12, Theme.TEXT_DARK);
-            time.setPreferredSize(new Dimension(70, 18));
-            r.add(time, BorderLayout.WEST);
-            JPanel t = Theme.vbox();
-            t.add(Theme.left(Theme.label(a.getTitle(), Font.PLAIN, 13, Theme.TEXT_DARK)));
-            if (a.getLocation() != null && !a.getLocation().isBlank())
-                t.add(Theme.left(Theme.iconText("pin", a.getLocation(), Theme.TEXT_GRAY)));
-            if (a.getDetails() != null && !a.getDetails().isBlank())
-                t.add(Theme.left(Theme.label(a.getDetails(), Font.ITALIC, 12, Theme.TEXT_GRAY)));
-            r.add(t, BorderLayout.CENTER);
-            JPanel right = Theme.row(8);
-            if (organizer && !g.isCompleted()) {
-                JLabel del = new JLabel(Icons.get("trash", 14, Theme.HINT));
-                del.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-                del.setToolTipText("Remove");
-                del.addMouseListener(new MouseAdapter() {
-                    @Override public void mouseClicked(MouseEvent e) {
-                        if (Theme.confirm(MyTripsForm.this, "Remove this activity?", "\"" + a.getTitle() + "\" will be taken off the itinerary.", "Remove", true)
-                                // BACKEND: Backend.deleteActivity() saves to MySQL
-                                && Theme.run(MyTripsForm.this, () -> Backend.deleteActivity(a.getId()))) refresh();
-                    }
-                });
-                right.add(del);
-            }
-            r.add(right, BorderLayout.EAST);
-            r.setAlignmentX(LEFT_ALIGNMENT);
-            r.setMaximumSize(new Dimension(Integer.MAX_VALUE, r.getPreferredSize().height));
-            p.add(r);
-        }
+        }, organizer ? "No stops yet. Add the first one, with a photo and a map pin." : "The organizer hasn't added stops yet.");
+        p.add(list);
         return p;
     }
 
@@ -390,32 +358,19 @@ public class MyTripsForm extends Page {
 
     // ================= add dialogs =================
     private void addActivity(TravelGroup g) {
-        DateField date = DateField.date();
-        date.setDate(g.getStartDate());
-        date.setRange(g.getStartDate(), g.getEndDate());
-        DateField time = DateField.time();
-        time.setTime(java.time.LocalTime.of(8, 0));
-        RoundTextField title = new RoundTextField("e.g. Swim at Batlag Falls");
-        RoundTextField loc = new RoundTextField("e.g. Batlag Falls");
-        RoundTextField details = new RoundTextField("e.g. Bring a change of clothes");
-        JPanel p = form(new String[]{"Date", "Time", "Activity *", "Location", "Details"},
-                new JComponent[]{date, time, title, loc, details});
-        if (!Dialogs.form(this, "calendar", "Add an activity", "It shows in the itinerary for every member.", p, "Add activity"))
-            return;
-        if (date.getDate().isBefore(g.getStartDate()) || date.getDate().isAfter(g.getEndDate())) {
-            Theme.error(this, "The date must be within the trip (" + Theme.dateRange(g.getStartDate(), g.getEndDate()) + ").");
-            return;
-        }
-        if (title.getText().isBlank()) { Theme.error(this, "Activity name is required."); return; }
-        Activity a = new Activity();
-        a.setGroupId(g.getId());
-        a.setDate(date.getDate());
-        a.setTime(time.getTime());
-        a.setTitle(title.getText().trim());
-        a.setLocation(loc.getText().trim());
-        a.setDetails(details.getText().trim());
-        // BACKEND: Backend.addActivity() saves to MySQL
-        if (Theme.run(this, () -> Backend.addActivity(a))) refresh();
+        Activity s = new Activity();
+        s.setGroupId(g.getId());
+        s.setDate(g.getStartDate());
+        s.setTime(java.time.LocalTime.of(8, 0));
+        StopForm.Result r = StopForm.open(this, s, g.getStartDate(), g.getEndDate(), g.getLatitude(), g.getLongitude());
+        // BACKEND: Backend.addActivity() saves to MySQL (and copies the photo to uploads/itinerary)
+        if (r != null && Theme.run(this, () -> Backend.addActivity(r.stop, r.newPhoto))) refresh();
+    }
+
+    private void editActivity(TravelGroup g, Activity a) {
+        StopForm.Result r = StopForm.open(this, a, g.getStartDate(), g.getEndDate(), g.getLatitude(), g.getLongitude());
+        // BACKEND: Backend.updateActivity() saves to MySQL
+        if (r != null && Theme.run(this, () -> Backend.updateActivity(r.stop, r.newPhoto))) refresh();
     }
 
     private void addExpense(TravelGroup g) {

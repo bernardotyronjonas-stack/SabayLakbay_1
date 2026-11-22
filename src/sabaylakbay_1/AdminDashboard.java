@@ -49,7 +49,8 @@ public class AdminDashboard extends JPanel {
 
     public AdminDashboard() {
         super(new BorderLayout());
-        sidebar = new Sidebar(Color.WHITE, "ADMIN PANEL", MENU, this::showPage, "Administrator", "logout", this::logout);
+        Theme.useAdminColors(true);              // indigo admin look
+        sidebar = new Sidebar(Theme.ADMIN_NAVY, "ADMIN PANEL", MENU, this::showPage, "Administrator", "logout", this::logout);
         content.setBackground(Theme.BG);
 
         reportsForm = new AdminReportsForm(this);
@@ -118,6 +119,7 @@ public class AdminDashboard extends JPanel {
         if (!Theme.confirm(this, "Log out?", "You'll need to log in again to manage SabayLakbay.", "Log out", false)) return;
         // BACKEND: Backend.logout() saves to MySQL
         Backend.logout();
+        Theme.useAdminColors(false);             // back to the traveler green
         AppWindow.show(new LoginForm(), "SabayLakbay - Log In");
     }
 

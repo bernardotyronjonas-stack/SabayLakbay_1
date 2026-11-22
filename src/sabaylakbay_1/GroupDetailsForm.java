@@ -109,16 +109,15 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
         body.add(fullWidth(org));
         body.add(Theme.gap(20));
 
-        // info tiles
-        JPanel info = Theme.clear(new GridLayout(0, 5, 12, 12));
-        info.add(tile("wallet", "Budget / person", Theme.peso(g.getBudgetPerPerson())));
-        info.add(tile("pin", "Location", g.getDestination()));
-        info.add(tile("bus", "Transportation", g.getTransportMode()));
+        // info tiles: 8 in two even rows of 4. Location (under the title) and slots left (in the
+        // status tag) are already shown above, so they don't get tiles of their own.
+        JPanel info = Theme.clear(new GridLayout(0, 4, 12, 12));
         info.add(tile("calendar", "Travel date", Theme.dateRange(g.getStartDate(), g.getEndDate())));
-        info.add(tile("map", "Meeting place", g.getMeetingPlace()));
         info.add(tile("clock", "Meeting time", Theme.time(g.getMeetingTime())));
+        info.add(tile("map", "Meeting place", g.getMeetingPlace()));
+        info.add(tile("bus", "Transportation", g.getTransportMode()));
         info.add(tile("users", "Participants", g.getCurrentMembers() + " of " + g.getMaxMembers()));
-        info.add(tile("check", "Slots available", g.getSlotsAvailable() == 0 ? "Full" : String.valueOf(g.getSlotsAvailable())));
+        info.add(tile("wallet", "Est. budget / person", Theme.peso(g.getBudgetPerPerson())));
         info.add(tile("grid", "Category", g.getCategory()));
         info.add(tile("trend", "Difficulty", String.valueOf(g.getDifficulty())));
         body.add(fullWidth(info));
@@ -129,6 +128,20 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
         body.add(Theme.gap(8));
         body.add(Theme.left(Theme.wrapLabel(g.getDescription(), 760, Font.PLAIN, 13, Theme.TEXT_DARK)));
         body.add(Theme.gap(20));
+
+        // itinerary: the plan stop by stop, so travelers know what they're joining
+        // BACKEND: Backend.getItinerary() reads from MySQL
+        List<Activity> stops = Backend.getItinerary(g.getId());
+        if (!stops.isEmpty()) {
+            JLabel itTitle = Theme.sectionTitle("Itinerary");
+            JLabel itCount = Theme.label(stops.size() + (stops.size() == 1 ? " stop" : " stops"), Font.PLAIN, 12, Theme.TEXT_GRAY);
+            body.add(Theme.left(Theme.row(10, itTitle, itCount)));
+            body.add(Theme.gap(6));
+            ItineraryView it = new ItineraryView();
+            it.show(stops, g.getStartDate(), null, null);
+            body.add(fullWidth(it));
+            body.add(Theme.gap(20));
+        }
 
         // creator notes
         if (g.getCreatorNotes() != null && !g.getCreatorNotes().isBlank()) {
@@ -141,6 +154,31 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
             nt.add(Theme.left(Theme.wrapLabel(g.getCreatorNotes(), 700, Font.PLAIN, 13, Theme.TEXT_DARK)));
             notes.add(nt);
             body.add(fullWidth(notes));
+            body.add(Theme.gap(24));
+        }
+
+        // where the group meets (only when the organizer pinned it). Distance is from the traveler's home.
+        if (g.hasMeetingPin()) {
+            JPanel head = Theme.clear(new BorderLayout());
+            JPanel ht = Theme.vbox();
+            ht.add(Theme.left(Theme.sectionTitle("Where you meet")));
+            Double km = Backend.distanceKm(g);                                     // BACKEND
+            ht.add(Theme.left(Theme.label(g.getMeetingPlace() + (km == null ? ""
+                    : "  \u2022  " + (km < 1 ? "under 1 km" : Math.round(km) + " km") + " from your home"),
+                    Font.PLAIN, 12, Theme.TEXT_GRAY)));
+            head.add(ht, BorderLayout.WEST);
+            RoundButton dir = new RoundButton("Directions to meet-up").icon("send").small();
+            dir.addActionListener(e -> MapView.openDirections(this, g.getMeetingLatitude(), g.getMeetingLongitude()));
+            JPanel hb = Theme.clear(new GridBagLayout());
+            hb.add(dir);
+            head.add(hb, BorderLayout.EAST);
+            body.add(fullWidth(head));
+            body.add(Theme.gap(10));
+            MapView meet = new MapView(false);
+            meet.setView(g.getMeetingLatitude(), g.getMeetingLongitude(), 14);
+            meet.setPin(g.getMeetingLatitude(), g.getMeetingLongitude());
+            meet.setPreferredSize(new Dimension(700, 240));
+            body.add(fullWidth(meet));
             body.add(Theme.gap(24));
         }
 
@@ -253,7 +291,7 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
         JPanel t = Theme.vbox();
         JPanel head = Theme.row(8, Theme.label(rv.getReviewerName(), Font.BOLD, 12, Theme.TEXT_DARK),
                 new StarRating(rv.getRating(), 13, false),
-                Theme.label(Theme.ago(rv.getCreatedAt()), Font.PLAIN, 11, Theme.HINT));
+                Theme.label(Theme.ago(rv.getCreatedAt()), Font.PLAIN, 11, Theme.TEXT_GRAY));
         t.add(Theme.left(head));
         t.add(Theme.gap(4));
         t.add(Theme.left(Theme.wrapLabel(rv.getComment(), 640, Font.PLAIN, 13, Theme.TEXT_DARK)));
@@ -334,7 +372,7 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
         } else {
             if (req != null && req.getStatus() == RequestStatus.REJECTED)
                 btns.add(Theme.label("Your last request was not approved.", Font.PLAIN, 12, Theme.TEXT_GRAY));
-            RoundButton join = new RoundButton("Send Join Request", RoundButton.Style.ORANGE);
+            RoundButton join = new RoundButton("Send Join Request");
             join.addActionListener(e -> sendRequest());
             btns.add(join);
         }

@@ -59,8 +59,17 @@ public class GroupCard extends RoundPanel {
         body.add(Theme.left(creator));
         body.add(Theme.gap(10));
 
-        JLabel price = Theme.label(Theme.peso(g.getBudgetPerPerson()) + " /person", Font.BOLD, 19, Theme.ORANGE);
-        body.add(Theme.left(price));
+        // the price is only an estimate (members settle with the organizer), same wording as the trip page
+        JLabel price = Theme.label(Theme.peso(g.getBudgetPerPerson()), Font.BOLD, 19, Theme.ORANGE);
+        JLabel per = Theme.label("est. per person", Font.PLAIN, 12, Theme.TEXT_GRAY);
+        JPanel priceRow = Theme.clear(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        priceRow.add(price);
+        priceRow.add(Theme.hgap(6));
+        JPanel perBox = Theme.clear(new BorderLayout());     // sits on the price's baseline
+        per.setBorder(Theme.pad(6, 0, 0, 0));
+        perBox.add(per, BorderLayout.CENTER);
+        priceRow.add(perBox);
+        body.add(Theme.left(priceRow));
         body.add(Theme.gap(10));
 
         JPanel row = Theme.clear(new BorderLayout());
@@ -72,11 +81,29 @@ public class GroupCard extends RoundPanel {
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
         body.add(row);
         body.add(Theme.gap(8));
-        // BACKEND: Backend.distanceKm() = distance from the traveler's home pin to the trip pin
+        // destination + how far the destination pin is from the traveler's home pin
+        Double destKm = destinationKm(g);
+        JLabel destLabel = Theme.iconText("pin", g.getDestination(), Theme.TEXT_GRAY);
+        destLabel.setToolTipText("Destination: " + g.getDestination());
+        JPanel destRow = Theme.clear(new BorderLayout(8, 0));
+        destRow.add(destLabel, BorderLayout.CENTER);
+        if (destKm != null) destRow.add(distanceLabel(destKm), BorderLayout.EAST);
+        destRow.setAlignmentX(LEFT_ALIGNMENT);
+        destRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+        body.add(destRow);
+        // meeting place + how far it is from the traveler's home
+        // BACKEND: Backend.distanceKm() = distance from the traveler's home pin to the MEETING PLACE pin
         Double km = Backend.distanceKm(g);
-        String where = km == null ? g.getDestination()
-                : g.getDestination() + "  \u2022  " + (km < 1 ? "under 1 km" : Math.round(km) + " km away");
-        body.add(Theme.left(Theme.iconText("pin", where, Theme.TEXT_GRAY)));
+        String meet = g.getMeetingPlace() == null || g.getMeetingPlace().isBlank() ? "Meet-up place not set" : g.getMeetingPlace();
+        JLabel meetLabel = Theme.iconText("users", "Meet-up: " + meet, Theme.TEXT_GRAY);
+        meetLabel.setToolTipText("Meet-up: " + meet);
+        JPanel meetRow = Theme.clear(new BorderLayout(8, 0));
+        meetRow.add(meetLabel, BorderLayout.CENTER);                 // long names end with "..."
+        if (km != null) meetRow.add(distanceLabel(km), BorderLayout.EAST);
+        meetRow.setAlignmentX(LEFT_ALIGNMENT);
+        meetRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 20));
+        body.add(Theme.gap(6));
+        body.add(meetRow);
         body.add(Theme.gap(16));
 
         RoundButton btn = new RoundButton("Join");
@@ -95,5 +122,23 @@ public class GroupCard extends RoundPanel {
         body.add(bw);
 
         add(body, BorderLayout.CENTER);
+    }
+
+    /** "12 km away" in green, used for both the destination and the meet-up distance. */
+    private static JLabel distanceLabel(double km) {
+        String text = km < 1 ? "under 1 km" : String.format("%,d km", Math.round(km));
+        JLabel l = Theme.label(text + " away", Font.BOLD, 12, Theme.GREEN);
+        l.setToolTipText("Straight-line distance from your home pin");
+        return l;
+    }
+
+    /**
+     * Straight-line km from the traveler's home pin to the trip's DESTINATION pin.
+     * null if either one has no pin (then nothing is shown). Only uses Backend.km(): no database call.
+     */
+    private static Double destinationKm(TravelGroup g) {
+        sabaylakbay_1.model.User me = Backend.getCurrentUser();
+        if (me == null || !me.hasLocation() || g.getLatitude() == null || g.getLongitude() == null) return null;
+        return Backend.km(me.getLatitude(), me.getLongitude(), g.getLatitude(), g.getLongitude());
     }
 }

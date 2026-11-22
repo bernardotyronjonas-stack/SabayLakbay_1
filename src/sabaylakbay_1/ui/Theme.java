@@ -16,24 +16,41 @@ import java.time.format.DateTimeFormatter;
 /** Colors, fonts and small helpers shared by every screen. */
 public final class Theme {
 
-    public static final Color GREEN = new Color(0x0B4F3A);
-    public static final Color GREEN_HOVER = new Color(0x0D6A4D);
-    public static final Color GREEN_LIGHT = new Color(0xE7F4EE);
-    public static final Color ORANGE = new Color(0xF4600C);
-    public static final Color ORANGE_HOVER = new Color(0xDB5309);
-    public static final Color BG = new Color(0xF6F7F9);
+    // The main color. Travelers see green; admins see indigo (see useAdminColors).
+    public static Color GREEN = new Color(0x0B4F3A);
+    public static Color GREEN_HOVER = new Color(0x0D6A4D);
+    public static Color GREEN_LIGHT = new Color(0xE7F4EE);
+    // dark enough for orange text on white and white text on orange (about 5:1)
+    public static final Color ORANGE = new Color(0xC2410C);
+    public static final Color ORANGE_HOVER = new Color(0x9A3412);
+    public static Color BG = new Color(0xF6F7F9);
     public static final Color WHITE = Color.WHITE;
     public static final Color TEXT_DARK = new Color(0x101828);
     public static final Color TEXT_GRAY = new Color(0x667085);
     public static final Color HINT = new Color(0x98A2B3);
     public static final Color BORDER = new Color(0xE9ECEF);
-    public static final Color LINK = new Color(0x137A4F);
+    public static Color LINK = new Color(0x137A4F);
     public static final Color RED = new Color(0xD93C3C);
     public static final Color RED_LIGHT = new Color(0xFDECEC);
     public static final Color YELLOW = new Color(0xF5B301);
     public static final Color YELLOW_LIGHT = new Color(0xFFF6DD);
     public static final Color BLUE_LIGHT = new Color(0xE8F0FB);
     public static final Color BLUE = new Color(0x2B5FA8);
+
+    /** Dark navy of the admin sidebar. */
+    public static final Color ADMIN_NAVY = new Color(0x111A33);
+
+    /**
+     * Admins get their own look (indigo instead of green) so the admin panel never feels like the traveler app.
+     * Called before the admin or traveler dashboard is built.
+     */
+    public static void useAdminColors(boolean admin) {
+        GREEN = admin ? new Color(0x4338CA) : new Color(0x0B4F3A);
+        GREEN_HOVER = admin ? new Color(0x3730A3) : new Color(0x0D6A4D);
+        GREEN_LIGHT = admin ? new Color(0xEEF0FF) : new Color(0xE7F4EE);
+        LINK = admin ? new Color(0x4F46E5) : new Color(0x137A4F);
+        BG = admin ? new Color(0xF4F5FA) : new Color(0xF6F7F9);
+    }
 
     /** Medium weight, e.g. Theme.font(Theme.MEDIUM, 14). */
     public static final int MEDIUM = 0x100;

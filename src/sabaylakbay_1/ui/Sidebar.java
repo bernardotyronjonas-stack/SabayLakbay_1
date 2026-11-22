@@ -171,13 +171,14 @@ public class Sidebar extends JPanel {
             Graphics2D g2 = (Graphics2D) g.create();
             Theme.aa(g2);
             if (glow > 0.01f) {
-                if (dark) g2.setColor(new Color(255, 255, 255, Math.round(38 * glow)));
+                if (dark && selected) g2.setColor(mixAlpha(Theme.GREEN, glow));
+                else if (dark) g2.setColor(new Color(255, 255, 255, Math.round(24 * glow)));
                 else if (selected) g2.setColor(mix(new Color(0xF2F4F7), Theme.GREEN_LIGHT, glow));
                 else g2.setColor(new Color(0xF2, 0xF4, 0xF7, Math.round(255 * Math.min(1f, glow * 2))));
                 g2.fill(new RoundRectangle2D.Float(0, 0, getWidth(), getHeight(), 10, 10));
             }
             if (selected && dark) {
-                g2.setColor(Color.WHITE);
+                g2.setColor(new Color(0xA5B4FC));
                 g2.fill(new RoundRectangle2D.Float(0, 12, 3, getHeight() - 24, 3, 3));
             }
             Color c = dark ? (selected ? Color.WHITE : new Color(255, 255, 255, 215))
@@ -201,6 +202,10 @@ public class Sidebar extends JPanel {
             g2.dispose();
         }
     
+        private static Color mixAlpha(Color c, float t) {
+            return new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.round(255 * Math.min(1f, t)));
+        }
+
         private static Color mix(Color a, Color b, float t) {
             return new Color(Math.round(a.getRed() + (b.getRed() - a.getRed()) * t),
                     Math.round(a.getGreen() + (b.getGreen() - a.getGreen()) * t),

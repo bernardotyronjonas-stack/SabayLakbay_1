@@ -67,4 +67,15 @@ public abstract class Page extends JPanel {
         p.setAlignmentX(Component.LEFT_ALIGNMENT);
         return p;
     }
+
+    /** Empty message with a button under it, so an empty list always has a next step. */
+    protected static JComponent empty(String icon, String text, String buttonText, Runnable action) {
+        JComponent p = empty(icon, text);
+        sabaylakbay_1.ui.components.RoundButton b = new sabaylakbay_1.ui.components.RoundButton(buttonText);
+        b.addActionListener(e -> action.run());
+        b.setAlignmentX(Component.CENTER_ALIGNMENT);
+        p.add(Theme.gap(16));
+        p.add(b);
+        return p;
+    }
 }

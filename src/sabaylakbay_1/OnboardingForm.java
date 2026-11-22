@@ -133,7 +133,7 @@ public class OnboardingForm extends JPanel {
     private void updateButtons() {
         int n = interests.getSelected().size();
         counter.setText(n == 0 ? "Nothing picked yet" : n + (n == 1 ? " interest" : " interests") + " picked");
-        counter.setForeground(n == 0 ? Theme.HINT : Theme.GREEN);
+        counter.setForeground(n == 0 ? Theme.TEXT_GRAY : Theme.GREEN);
         if (step == 1) {
             next.setText("Continue");
             next.setEnabled(n > 0);

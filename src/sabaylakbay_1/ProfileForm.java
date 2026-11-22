@@ -170,7 +170,7 @@ public class ProfileForm extends Page {
             p.add(new Avatar(Backend.getUser(r.getReviewerId()), 34), BorderLayout.WEST);
             JPanel rt = Theme.vbox();
             rt.add(Theme.left(Theme.row(8, Theme.label(r.getReviewerName(), Font.BOLD, 12, Theme.TEXT_DARK),
-                    new StarRating(r.getRating(), 13, false), Theme.label(Theme.ago(r.getCreatedAt()), Font.PLAIN, 11, Theme.HINT))));
+                    new StarRating(r.getRating(), 13, false), Theme.label(Theme.ago(r.getCreatedAt()), Font.PLAIN, 11, Theme.TEXT_GRAY))));
             rt.add(Theme.gap(4));
             rt.add(Theme.left(Theme.wrapLabel(r.getComment(), 700, Font.PLAIN, 13, Theme.TEXT_DARK)));
             p.add(rt);
@@ -224,7 +224,7 @@ public class ProfileForm extends Page {
         lh.add(Theme.link("Edit", () -> editInterests(me)), BorderLayout.EAST);
         left.add(lh, BorderLayout.NORTH);
         JPanel chips = Theme.clear(new FlowLayout(FlowLayout.LEFT, 0, 0));
-        if (likes.isEmpty()) chips.add(Theme.label("Nothing picked yet", Font.PLAIN, 13, Theme.HINT));
+        if (likes.isEmpty()) chips.add(Theme.label("Nothing picked yet", Font.PLAIN, 13, Theme.TEXT_GRAY));
         for (String l : likes) {
             Chip c = new Chip(l, Theme.GREEN_LIGHT, Theme.GREEN);
             chips.add(c);
@@ -241,7 +241,7 @@ public class ProfileForm extends Page {
         right.add(rh, BorderLayout.NORTH);
         JPanel addr = Theme.vbox();
         addr.add(Theme.left(Theme.iconText("pin", me.hasAddress() ? me.getFullAddress()
-                : "Not set yet. Add it to see trips near you.", me.hasAddress() ? Theme.TEXT_DARK : Theme.HINT)));
+                : "Not set yet. Add it to see trips near you.", me.hasAddress() ? Theme.TEXT_DARK : Theme.TEXT_GRAY)));
         if (me.hasAddress()) {
             addr.add(Theme.gap(4));
             addr.add(Theme.left(Theme.label(me.hasLocation() ? "Pinned on the map" : "No map pin (distances to trips won't show)",

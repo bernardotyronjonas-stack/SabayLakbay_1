@@ -67,6 +67,17 @@ public class MapPicker extends JPanel {
         showStatus();
     }
 
+    /** Smaller map, e.g. inside a popup form. */
+    public MapPicker mapSize(int w, int h) {
+        map.setPreferredSize(new Dimension(w, h));
+        return this;
+    }
+
+    /** Centers the map on an area (e.g. the trip's destination) when nothing is pinned yet. */
+    public void showArea(Double lat, Double lng, int zoom) {
+        if (!map.hasPin() && lat != null && lng != null) map.setView(lat, lng, zoom);
+    }
+
     /** Hides the search row (when the address is typed in fields instead). */
     public MapPicker hideSearch() {
         ((BorderLayout) getLayout()).getLayoutComponent(BorderLayout.NORTH).setVisible(false);

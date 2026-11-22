@@ -12,7 +12,8 @@ import java.awt.image.BufferedImage;
 
 /**
  * Shared look of LoginForm and RegisterForm (full screen):
- * Mayon background, text on the left, white card on the right with Log In / Register tabs.
+ * real Mayon photo in full color, a dark fade only on the left behind the text, frosted-glass chips,
+ * and a white card on the right with underlined Log In / Register tabs.
  * Everything is placed in doLayout() so it fits any screen size.
  */
 public abstract class AuthScreen extends JPanel {
@@ -20,7 +21,7 @@ public abstract class AuthScreen extends JPanel {
     protected static final int FORM_W = 352;
     private static final int CARD_W = FORM_W + 64, FORM_TOP = 100;
 
-    protected final RoundPanel card = new RoundPanel(null, 22, Color.WHITE, null);
+    protected final RoundPanel card = new RoundPanel(null, 18, Color.WHITE, null);
     protected final JPanel form = Theme.clear(null);
     private JButton defaultButton;
 
@@ -28,30 +29,57 @@ public abstract class AuthScreen extends JPanel {
     private final LogoIcon logo = new LogoIcon(Color.WHITE, 34, 30);
     private final JLabel brand = Theme.label("SabayLakbay", Font.BOLD, 26, Color.WHITE);
     private final JLabel tagline;
-    private final JLabel headline = Theme.label("<html>Travel together,<br>explore more.</html>", Font.BOLD, 44, Color.WHITE);
+    private final JLabel headline = Theme.label("<html>Travel together,<br>explore more.</html>", Font.BOLD, 50, Color.WHITE);
     private final JLabel intro;
-    private final JLabel spot = Theme.iconText("pin", "Mayon Volcano, Albay", Color.WHITE);
-    private final JLabel spotSub;
+    private final JPanel perks;                // frosted chips under the intro
+    private final Glass place;                 // "Mayon Volcano, Albay" chip at the bottom
+    private final JLabel credit;
+
+    // the photo scaled once to the window size (smooth and fast)
+    private BufferedImage scaled;
+    private BufferedImage scaledFrom;
 
     /** @param registerTab true = Register tab is active, false = Log In tab is active */
     protected AuthScreen(boolean registerTab) {
         super(null);
         Color soft = new Color(255, 255, 255, 215);
         tagline = Theme.label("Travel Together \u2022 Share Experiences \u2022 Create Memories", Font.PLAIN, 12, soft);
-        intro = Theme.label("<html>Create or join travel groups, meet new friends, and make<br>unforgettable memories \u2014 for less.</html>",
-                Font.PLAIN, 15, soft);
-        spot.setFont(Theme.font(Font.BOLD, 12));
-        spotSub = Theme.label("A little closer to your next adventure.", Font.PLAIN, 10, soft);
-        for (JComponent c : new JComponent[]{logo, brand, tagline, headline, intro, spot, spotSub}) add(c);
+        intro = Theme.label("<html>Create or join travel groups, meet new friends, and make<br>unforgettable memories, for less.</html>",
+                Font.PLAIN, 16, soft);
+
+        perks = Theme.clear(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        String[][] items = {{"shield", "ID-verified travelers"}, {"users", "Group trips"}, {"wallet", "Shared costs"}};
+        for (String[] it : items) {
+            Glass chip = new Glass(new FlowLayout(FlowLayout.LEFT, 8, 0), 999);
+            chip.setBorder(Theme.pad(8, 8, 8, 14));
+            JLabel l = Theme.label(it[1], Theme.MEDIUM, 13, Color.WHITE);
+            l.setIcon(Icons.get(it[0], 15, Color.WHITE));
+            l.setIconTextGap(8);
+            chip.add(l);
+            perks.add(chip);
+            perks.add(Box.createHorizontalStrut(10));
+        }
+
+        place = new Glass(new BorderLayout(10, 0), 14);
+        place.setBorder(Theme.pad(10, 12, 10, 16));
+        place.add(new JLabel(Icons.get("pin", 18, Color.WHITE)), BorderLayout.WEST);
+        JPanel pt = Theme.vbox();
+        pt.add(Theme.left(Theme.label(sabaylakbay_1.model.Photos.LOGIN_PLACE, Font.BOLD, 13, Color.WHITE)));
+        pt.add(Theme.left(Theme.label("A little closer to your next adventure.", Font.PLAIN, 11, soft)));
+        place.add(pt, BorderLayout.CENTER);
+
+        credit = Theme.label(sabaylakbay_1.model.Photos.LOGIN_CREDIT, Font.PLAIN, 10, new Color(255, 255, 255, 160));
+        credit.setHorizontalAlignment(SwingConstants.RIGHT);
+        for (JComponent c : new JComponent[]{logo, brand, tagline, headline, intro, perks, place, credit}) add(c);
 
         JLabel tabLogin = tab("Log In", !registerTab);
         JLabel tabRegister = tab("Register", registerTab);
-        tabLogin.setBounds(32, 28, FORM_W / 2, 44);
-        tabRegister.setBounds(32 + FORM_W / 2, 28, FORM_W / 2, 44);
+        tabLogin.setBounds(32, 24, FORM_W / 2, 48);
+        tabRegister.setBounds(32 + FORM_W / 2, 24, FORM_W / 2, 48);
         tabLogin.addMouseListener(click(this::goToLogin));
         tabRegister.addMouseListener(click(this::goToRegister));
         TabLine line = new TabLine(registerTab);
-        line.setBounds(32, 28, FORM_W, 44);
+        line.setBounds(32, 24, FORM_W, 48);
         card.add(tabLogin);
         card.add(tabRegister);
         card.add(line);         // added last = drawn behind the tab labels
@@ -83,10 +111,13 @@ public abstract class AuthScreen extends JPanel {
         brand.setBounds(left + 42, 42, 300, 36);
         tagline.setBounds(left, 84, 420, 20);
         int mid = h / 2;
-        headline.setBounds(left, mid - 110, 640, 112);
-        intro.setBounds(left, mid + 10, 560, 50);
-        spot.setBounds(left - 2, h - 88, 300, 18);
-        spotSub.setBounds(left + 21, h - 69, 300, 14);
+        headline.setBounds(left, mid - 150, 640, 128);
+        intro.setBounds(left, mid - 8, 600, 52);
+        Dimension pp = perks.getPreferredSize();
+        perks.setBounds(left, mid + 66, Math.min(pp.width, w / 2), pp.height);
+        Dimension pl = place.getPreferredSize();
+        place.setBounds(left, h - pl.height - 40, pl.width + 8, pl.height);
+        credit.setBounds(w - 560, h - 28, 532, 16);
         int right = Math.max(48, (int) (w * 0.07));
         card.setLocation(w - CARD_W - right, Math.max(20, (h - card.getHeight()) / 2));
     }
@@ -146,36 +177,90 @@ public abstract class AuthScreen extends JPanel {
 
     private static JLabel tab(String text, boolean active) {
         JLabel l = new JLabel(text, SwingConstants.CENTER);
-        l.setFont(Theme.font(active ? Font.BOLD : Theme.MEDIUM, 14));
-        l.setForeground(active ? Theme.TEXT_DARK : Theme.TEXT_GRAY);
+        l.setFont(Theme.font(active ? Font.BOLD : Theme.MEDIUM, 15));
+        l.setForeground(active ? Theme.GREEN : Theme.TEXT_GRAY);
         l.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         return l;
     }
 
-    /** Background photo from src/images/mayon.jpg (plain green if the file is missing). */
+    /**
+     * Background: the real photo in full color, with fades only where text sits
+     * (left side, top and bottom), so it looks designed instead of a picture plugged in.
+     */
     @Override
     protected void paintComponent(Graphics g) {
         Graphics2D g2 = (Graphics2D) g.create();
         Theme.aa(g2);
         int w = getWidth(), h = getHeight();
-        BufferedImage img = ImageBox.load("/images/mayon.jpg");
+        BufferedImage img = ImageBox.load(sabaylakbay_1.model.Photos.LOGIN);
         if (img != null) {
-            ImageBox.drawCover(g2, img, w, h);
-            g2.setPaint(new GradientPaint(0, 0, new Color(0, 0, 0, 150), w * 0.6f, 0, new Color(0, 0, 0, 30)));
+            // scaled to the screen's real pixels (Windows display scaling 125% / 150%), so it stays sharp
+            double sx = g2.getTransform().getScaleX(), sy = g2.getTransform().getScaleY();
+            BufferedImage photo = scaledPhoto(img, (int) Math.ceil(w * sx), (int) Math.ceil(h * sy));
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2.drawImage(photo, 0, 0, w, h, null);
+            // left: deep green-black fade behind the headline, clear on the right
+            g2.setPaint(new LinearGradientPaint(0, 0, w, 0, new float[]{0f, 0.32f, 0.58f, 1f},
+                    new Color[]{new Color(4, 20, 15, 215), new Color(4, 20, 15, 150), new Color(4, 20, 15, 20), new Color(4, 20, 15, 0)}));
+            g2.fillRect(0, 0, w, h);
+            // top: so the logo always reads
+            g2.setPaint(new GradientPaint(0, 0, new Color(0, 0, 0, 110), 0, 170, new Color(0, 0, 0, 0)));
+            g2.fillRect(0, 0, w, 170);
+            // bottom: grounds the place chip
+            g2.setPaint(new GradientPaint(0, h - 280, new Color(0, 0, 0, 0), 0, h, new Color(0, 0, 0, 150)));
+            g2.fillRect(0, h - 280, w, 280);
         } else {
-            g2.setPaint(new GradientPaint(0, 0, new Color(0x123B2E), w, h, new Color(0x2F5D4A)));
+            // no photo yet (offline): rich green with soft light
+            g2.setPaint(new GradientPaint(0, 0, new Color(0x0E3B2D), w, h, new Color(0x1E5A45)));
+            g2.fillRect(0, 0, w, h);
+            g2.setPaint(new RadialGradientPaint(new Point(w * 3 / 4, h / 4), Math.max(w, h) / 2f, new float[]{0f, 1f},
+                    new Color[]{new Color(255, 255, 255, 40), new Color(255, 255, 255, 0)}));
+            g2.fillRect(0, 0, w, h);
         }
-        g2.fillRect(0, 0, w, h);
-        // soft shadow behind the card
+        // big soft shadow under the card
         Rectangle r = card.getBounds();
-        for (int i = 0; i < 12; i++) {
-            g2.setColor(new Color(0, 0, 0, 6));
-            g2.fillRoundRect(r.x - i + 2, r.y - i + 8, r.width + i * 2 - 4, r.height + i * 2 - 4, 16 + i * 2, 16 + i * 2);
+        for (int i = 0; i < 22; i++) {
+            g2.setColor(new Color(0, 0, 0, 5));
+            g2.fillRoundRect(r.x - i + 4, r.y - i + 18, r.width + i * 2 - 8, r.height + i * 2 - 16, 18 + i * 2, 18 + i * 2);
         }
         g2.dispose();
     }
 
-    /** Segmented switch behind the two tabs: gray track, white pill under the active tab. */
+    /** Scales the photo to fill the window once (high quality), and again only when the size changes. */
+    private BufferedImage scaledPhoto(BufferedImage img, int w, int h) {
+        if (scaled != null && scaledFrom == img && scaled.getWidth() == w && scaled.getHeight() == h) return scaled;
+        BufferedImage out = new BufferedImage(Math.max(1, w), Math.max(1, h), BufferedImage.TYPE_INT_RGB);
+        Graphics2D b = out.createGraphics();
+        b.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        b.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        ImageBox.drawCover(b, img, w, h);
+        b.dispose();
+        scaled = out;
+        scaledFrom = img;
+        return out;
+    }
+
+    /** Frosted-glass panel: see-through white with a light edge. */
+    private static class Glass extends JPanel {
+        private final int arc;
+        Glass(LayoutManager lm, int arc) {
+            super(lm);
+            this.arc = arc;
+            setOpaque(false);
+        }
+        @Override protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            Theme.aa(g2);
+            int w = getWidth(), h = getHeight(), a = Math.min(arc, h);
+            g2.setColor(new Color(255, 255, 255, 34));
+            g2.fillRoundRect(0, 0, w - 1, h - 1, a, a);
+            g2.setColor(new Color(255, 255, 255, 70));
+            g2.drawRoundRect(0, 0, w - 1, h - 1, a, a);
+            g2.dispose();
+        }
+    }
+
+    /** Underline tabs: a thin gray line across, a thick colored line under the active tab. */
     private static class TabLine extends JComponent {
         private final boolean right;
         TabLine(boolean right) { this.right = right; }
@@ -183,13 +268,10 @@ public abstract class AuthScreen extends JPanel {
             Graphics2D g2 = (Graphics2D) g.create();
             Theme.aa(g2);
             int w = getWidth(), h = getHeight();
-            g2.setColor(new Color(0xF2F4F7));
-            g2.fillRoundRect(0, 0, w, h, 14, 14);
-            int px = right ? w / 2 + 2 : 4, pw = w / 2 - 6;
-            g2.setColor(new Color(16, 24, 40, 18));
-            g2.fillRoundRect(px, 5, pw, h - 8, 10, 10);
-            g2.setColor(Color.WHITE);
-            g2.fillRoundRect(px, 4, pw, h - 9, 10, 10);
+            g2.setColor(new Color(0xEAECF0));
+            g2.fillRect(0, h - 1, w, 1);
+            g2.setColor(Theme.GREEN);
+            g2.fillRoundRect(right ? w / 2 : 0, h - 3, w / 2, 3, 3, 3);
             g2.dispose();
         }
     }

@@ -24,7 +24,7 @@ public final class Database {
     private static final int PORT = 3306;
     private static final String DATABASE = "sabaylakbay";
     private static final String USER = "root";
-    private static final String PASSWORD = "!";      // XAMPP default is empty
+    private static final String PASSWORD = "tjpogi1821!";      // XAMPP default is empty
 
     private static final String URL = "jdbc:mysql://" + HOST + ":" + PORT + "/" + DATABASE
             + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Manila&characterEncoding=UTF-8";

@@ -38,6 +38,11 @@ public class HomeForm extends Page {
 
     private final JLabel sectionTitle = Theme.sectionTitle("Featured Groups");
     private final JPanel picks = Theme.vbox();          // "Picked for you" section
+    private final JPanel nearBox = Theme.vbox();        // "Groups near you" section (meeting places in a radius)
+    private boolean nearAll;                            // "See all" in the near-you section
+
+    /** Radius choices, like Marketplace. */
+    private static final int[] RADII = {1, 2, 5, 10, 20, 40, 60, 80, 100, 250, 500};
     private final JLabel countLabel = Theme.label("", Font.PLAIN, 12, Theme.TEXT_GRAY);
     private final JLabel seeAll;
     private final JPanel grid = Theme.clear(new GridLayout(0, 3, 20, 20));
@@ -58,6 +63,10 @@ public class HomeForm extends Page {
         // ----- picked for you (from interests + home location) -----
         box.add(picks);
         picks.setAlignmentX(LEFT_ALIGNMENT);
+
+        // ----- groups near you (meeting place within the chosen radius) -----
+        box.add(nearBox);
+        nearBox.setAlignmentX(LEFT_ALIGNMENT);
 
         // ----- filter + sort row -----
         RoundButton filterBtn = new RoundButton("Filter").icon("filter").small();
@@ -193,6 +202,7 @@ public class HomeForm extends Page {
         }
         boolean searching = filtersOn || !searchField.getText().isBlank();
         buildPicks(searching);
+        buildNear(searching);
         sectionTitle.setText(searching ? "Search Results" : showAll ? "All Groups" : "Featured Groups");
         countLabel.setText(list.size() + (list.size() == 1 ? " group" : " groups"));
         seeAll.setVisible(!searching && list.size() > featuredCount());
@@ -203,7 +213,10 @@ public class HomeForm extends Page {
         for (int i = 0; i < limit; i++) grid.add(new GroupCard(app, list.get(i)));
         if (list.isEmpty()) {
             grid.setLayout(new BorderLayout());
-            grid.add(empty("search", "No groups match your search. Try other filters."));
+            // only talk about "your search" when there is one; otherwise there are simply no trips yet
+            grid.add(searching
+                    ? empty("search", "No groups match your search. Try other words or filters.")
+                    : empty("map", "No trips yet. Be the first to start one.", "Create a group", () -> app.showPage("CREATE")));
         } else {
             grid.setLayout(new GridLayout(0, columns(), 20, 20));
         }
@@ -214,15 +227,15 @@ public class HomeForm extends Page {
 
     /** The big photo banner with the search bar. */
     private class Hero extends JPanel {
-        private final JLabel title = Theme.label("<html>Your next adventure<br>starts here</html>", Font.BOLD, 34, Color.WHITE);
+        private final JLabel title = Theme.label("Your next adventure starts here", Font.BOLD, 30, Color.WHITE);
         private final JLabel sub = Theme.label(greeting() + " Discover and join travel groups, or create your own.", Font.PLAIN, 14, new Color(255, 255, 255, 225));
         private final RoundPanel search = new RoundPanel(new BorderLayout(), 12, Color.WHITE, null);
 
         Hero() {
             super(null);
             setOpaque(false);
-            setPreferredSize(new Dimension(800, 250));
-            RoundButton go = new RoundButton("Search", RoundButton.Style.ORANGE);
+            setPreferredSize(new Dimension(800, 186));     // short enough that the first trips show on a laptop screen
+            RoundButton go = new RoundButton("Search");
             go.addActionListener(e -> refresh());
             search.setBorder(Theme.pad(5, 4, 5, 6));
             search.add(searchField);
@@ -235,9 +248,9 @@ public class HomeForm extends Page {
         @Override
         public void doLayout() {
             int w = getWidth();
-            title.setBounds(30, 26, w - 60, 92);
-            sub.setBounds(30, 120, w - 60, 22);
-            search.setBounds(30, 158, Math.min(660, w - 60), 50);
+            title.setBounds(30, 24, w - 60, 40);
+            sub.setBounds(30, 66, w - 60, 22);
+            search.setBounds(30, 106, Math.min(660, w - 60), 50);
         }
 
         @Override
@@ -245,7 +258,7 @@ public class HomeForm extends Page {
             Graphics2D g2 = (Graphics2D) g.create();
             Theme.aa(g2);
             int w = getWidth(), h = getHeight();
-            BufferedImage img = ImageBox.load("/images/mayon.jpg");
+            BufferedImage img = ImageBox.load(sabaylakbay_1.model.Photos.HERO);
             ImageBox.paintRounded(g2, w, h, 18, true, b -> {
                 if (img != null) ImageBox.drawCover(b, img, w, h);
                 else ImageBox.drawPlaceholder(b, "", w, h);
@@ -263,6 +276,169 @@ public class HomeForm extends Page {
         sabaylakbay_1.model.User u = Backend.getCurrentUser();
         String first = u == null || u.getFullName() == null ? "" : ", " + u.getFullName().trim().split("\\s+")[0];
         return part + first + ".";
+    }
+
+    // ================= GROUPS NEAR YOU =================
+
+    /** The radius the traveler picked last time (saved on this computer), 20 km at first. */
+    private static int radius() {
+        try {
+            return java.util.prefs.Preferences.userNodeForPackage(HomeForm.class).getInt("nearRadius." + Backend.currentUserId(), 20);
+        } catch (Exception e) { return 20; }
+    }
+
+    private static void saveRadius(int km) {
+        try {
+            java.util.prefs.Preferences.userNodeForPackage(HomeForm.class).putInt("nearRadius." + Backend.currentUserId(), km);
+        } catch (Exception ignore) { /* not saved, still used this time */ }
+    }
+
+    /** "Groups near you": trips whose MEETING PLACE is within the radius of the traveler's home. */
+    private void buildNear(boolean searching) {
+        nearBox.removeAll();
+        if (searching) { nearBox.revalidate(); nearBox.repaint(); return; }
+        User me = Backend.getCurrentUser();
+        int km = radius();
+
+        JPanel head = Theme.clear(new BorderLayout());
+        JPanel left = Theme.vbox();
+        left.add(Theme.left(Theme.sectionTitle("Groups near you")));
+        left.add(Theme.gap(3));
+        head.add(left, BorderLayout.WEST);
+
+        if (!me.hasLocation()) {
+            left.add(Theme.left(Theme.label("Trips that meet up close to your home.", Font.PLAIN, 13, Theme.TEXT_GRAY)));
+            nearBox.add(full(head));
+            nearBox.add(Theme.gap(12));
+            RoundPanel ask = new RoundPanel(new BorderLayout(16, 0), 18, Theme.GREEN_LIGHT, null);
+            ask.setBorder(Theme.pad(16, 20, 16, 20));
+            ask.add(new JLabel(Icons.get("pin", 24, Theme.GREEN)), BorderLayout.WEST);
+            ask.add(Theme.middleLeft(Theme.label("Pin your home on the map to see groups that meet up near you.",
+                    Font.PLAIN, 13, Theme.TEXT_DARK)), BorderLayout.CENTER);
+            RoundButton set = new RoundButton("Set home location").small();
+            set.addActionListener(e -> app.showPage("PROFILE"));
+            JPanel sw = Theme.clear(new GridBagLayout());
+            sw.add(set);
+            ask.add(sw, BorderLayout.EAST);
+            nearBox.add(full(ask));
+            nearBox.add(Theme.gap(30));
+            nearBox.revalidate();
+            nearBox.repaint();
+            return;
+        }
+
+        List<TravelGroup> near = Backend.getGroupsNearMe(km);                     // BACKEND
+        left.add(Theme.left(Theme.label("Meet-up points within " + km + " km of " + me.getLocation()
+                + "  \u2022  " + near.size() + (near.size() == 1 ? " group" : " groups"), Font.PLAIN, 13, Theme.TEXT_GRAY)));
+        RoundButton change = new RoundButton("Within " + km + " km", RoundButton.Style.OUTLINE).icon("pin").small();
+        change.setToolTipText("Change how far to look");
+        change.addActionListener(e -> chooseRadius());
+        JPanel right;
+        if (near.size() > columns()) {
+            JLabel all = Theme.link(nearAll ? "Show less" : "See all " + near.size(), () -> { nearAll = !nearAll; refresh(); });
+            right = Theme.row(18, all, change);
+        } else {
+            right = Theme.row(0, change);
+        }
+        JPanel rw = Theme.clear(new GridBagLayout());
+        rw.add(right);
+        head.add(rw, BorderLayout.EAST);
+        nearBox.add(full(head));
+        nearBox.add(Theme.gap(12));
+
+        if (near.isEmpty()) {
+            RoundPanel none = RoundPanel.card(new BorderLayout(14, 0));
+            none.setBorder(Theme.pad(16, 20, 16, 20));
+            none.add(new JLabel(Icons.get("search", 22, Theme.TEXT_GRAY)), BorderLayout.WEST);
+            none.add(Theme.middleLeft(Theme.label("No groups meet up within " + km + " km yet. Try a bigger radius.",
+                    Font.PLAIN, 13, Theme.TEXT_GRAY)), BorderLayout.CENTER);
+            int bigger = km;
+            for (int r : RADII) if (r > km) { bigger = r; break; }
+            if (bigger > km) {
+                int b = bigger;
+                RoundButton widen = new RoundButton("Show within " + b + " km", RoundButton.Style.OUTLINE).small();
+                widen.addActionListener(e -> { saveRadius(b); refresh(); });
+                JPanel ww = Theme.clear(new GridBagLayout());
+                ww.add(widen);
+                none.add(ww, BorderLayout.EAST);
+            }
+            nearBox.add(full(none));
+        } else {
+            int show = nearAll ? near.size() : Math.min(columns(), near.size());
+            JPanel grid = Theme.clear(new GridLayout(0, columns(), 20, 20));
+            for (int i = 0; i < show; i++) grid.add(new GroupCard(app, near.get(i)));
+            for (int i = show; i < columns(); i++) grid.add(Theme.clear(new BorderLayout()));   // keep cards card-sized
+            nearBox.add(full(grid));
+        }
+        nearBox.add(Theme.gap(30));
+        nearBox.revalidate();
+        nearBox.repaint();
+    }
+
+    /** Marketplace-style radius picker: a slider and a map with the circle and the groups inside it. */
+    private void chooseRadius() {
+        User me = Backend.getCurrentUser();
+        List<TravelGroup> all = Backend.getGroupsNearMe(100000);                  // BACKEND: every trip with a meet-up pin
+        int start = 0;
+        for (int i = 0; i < RADII.length; i++) if (RADII[i] <= radius()) start = i;
+
+        JLabel value = Theme.label("", Font.BOLD, 22, Theme.TEXT_DARK);
+        JLabel count = Theme.label("", Font.PLAIN, 13, Theme.TEXT_GRAY);
+        JSlider slider = new JSlider(0, RADII.length - 1, start);
+        slider.setOpaque(false);
+        slider.setSnapToTicks(true);
+        slider.setMajorTickSpacing(1);
+        slider.setPaintTicks(true);
+        java.util.Hashtable<Integer, JLabel> labels = new java.util.Hashtable<>();
+        for (int i : new int[]{0, 3, 5, 8, 10}) labels.put(i, Theme.label(RADII[i] + " km", Font.PLAIN, 11, Theme.TEXT_GRAY));
+        slider.setLabelTable(labels);
+        slider.setPaintLabels(true);
+        slider.setPreferredSize(new Dimension(520, 56));
+
+        MapView map = new MapView(false);
+        map.setPreferredSize(new Dimension(520, 300));
+        map.setPin(me.getLatitude(), me.getLongitude());
+
+        Runnable update = () -> {
+            int km = RADII[slider.getValue()];
+            value.setText(km + " km");
+            java.util.List<double[]> dots = new java.util.ArrayList<>();
+            int n = 0;
+            for (TravelGroup g : all) {
+                Double d = Backend.distanceKm(g);
+                if (d != null && d <= km) { n++; dots.add(new double[]{g.getMeetingLatitude(), g.getMeetingLongitude()}); }
+            }
+            count.setText(n == 0 ? "No groups meet up in this area yet." : n + (n == 1 ? " group meets up" : " groups meet up") + " in this area");
+            map.setRadiusKm((double) km);
+            map.setDots(dots);
+            map.fitRadius();
+        };
+        slider.addChangeListener(e -> update.run());
+        update.run();
+        SwingUtilities.invokeLater(update);      // again once the map has its real size
+
+        JPanel body = Theme.vbox();
+        JPanel top = Theme.clear(new BorderLayout());
+        top.add(value, BorderLayout.WEST);
+        top.add(Theme.middleLeft(count), BorderLayout.EAST);
+        top.setAlignmentX(LEFT_ALIGNMENT);
+        body.add(top);
+        body.add(Theme.gap(6));
+        slider.setAlignmentX(LEFT_ALIGNMENT);
+        body.add(slider);
+        body.add(Theme.gap(10));
+        map.setAlignmentX(LEFT_ALIGNMENT);
+        body.add(map);
+        body.add(Theme.gap(6));
+        body.add(Theme.left(Theme.label("Center: your home (" + me.getLocation() + "). Orange dots are meet-up points.",
+                Font.PLAIN, 11, Theme.TEXT_GRAY)));
+
+        if (sabaylakbay_1.ui.Dialogs.form(this, "pin", "How far should we look?",
+                "Show groups whose meeting place is within this distance of your home.", body, "Apply")) {
+            saveRadius(RADII[slider.getValue()]);
+            nearAll = false;
+            refresh();
+        }
     }
 
     /** "Picked for you": trips matching the traveler's interests and near their home. */
@@ -302,7 +478,10 @@ public class HomeForm extends Page {
                 left.add(Theme.left(Theme.label(basis, Font.PLAIN, 13, Theme.TEXT_GRAY)));
                 head.add(left, BorderLayout.WEST);
                 JLabel edit = Theme.link("Edit interests", () -> app.showPage("PROFILE"));
-                head.add(edit, BorderLayout.EAST);
+                JPanel editTop = Theme.clear(new BorderLayout());   // lines the link up with the heading, not the middle
+                edit.setBorder(Theme.pad(3, 0, 0, 0));
+                editTop.add(edit, BorderLayout.NORTH);
+                head.add(editTop, BorderLayout.EAST);
                 picks.add(full(head));
                 picks.add(Theme.gap(12));
                 JPanel row = Theme.clear(new GridLayout(1, columns(), 20, 0));

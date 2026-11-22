@@ -6,7 +6,10 @@ import sabaylakbay_1.ui.Page;
 import sabaylakbay_1.ui.components.FadeCards;
 import sabaylakbay_1.ui.Sidebar;
 import sabaylakbay_1.ui.Theme;
+import sabaylakbay_1.model.Message;
 import sabaylakbay_1.model.TravelGroup;
+import sabaylakbay_1.model.User;
+import sabaylakbay_1.ui.components.MessagePopup;
 import sabaylakbay_1.backend.Backend;
 
 import javax.swing.*;
@@ -45,8 +48,14 @@ public class MainDashboard extends JPanel {
     private final NotificationsForm notificationsForm;
     private final ProfileForm profileForm;
 
+    // new-message alerts: checks the database every few seconds
+    private int[] seen = {0, 0};                 // newest direct message id and group message id already alerted
+    private final Timer messageCheck = new Timer(4000, e -> checkNewMessages());
+    private boolean checking;
+
     public MainDashboard() {
         super(new BorderLayout());
+        Theme.useAdminColors(false);             // traveler green look
         sidebar = new Sidebar(Color.WHITE, null, MENU, this::showPage, "Traveler", "chevronRight",
                 () -> showPage("PROFILE"));
         content.setBackground(Theme.BG);
@@ -71,6 +80,72 @@ public class MainDashboard extends JPanel {
         add(content, BorderLayout.CENTER);
         SubPage.setArea(content);    // detail pages (trip details, profiles...) open over this area
         showPage("HOME");
+
+        // BACKEND: Backend.getLatestMessageIds() reads from MySQL (alerts start from now)
+        seen = Backend.getLatestMessageIds();
+        messageCheck.start();
+    }
+
+    /**
+     * NEW-MESSAGE ALERTS. Every 4 seconds (in the background so the app never freezes):
+     * any new direct message or group chat message for this traveler updates the Messages badge,
+     * refreshes the open chat, and pops up "New message from ..." in the corner.
+     */
+    private void checkNewMessages() {
+        if (!isDisplayable() || Backend.getCurrentUser() == null) { messageCheck.stop(); return; }
+        if (checking) return;
+        checking = true;
+        int me = Backend.currentUserId();
+        int[] from = seen.clone();
+        new SwingWorker<java.util.List<Message>, Void>() {
+            @Override protected java.util.List<Message> doInBackground() {
+                // BACKEND: Backend.getNewMessages() reads from MySQL
+                return Backend.getNewMessages(me, from[0], from[1]);
+            }
+            @Override protected void done() {
+                checking = false;
+                java.util.List<Message> news;
+                try { news = get(); } catch (Exception ex) { return; }      // database busy: try again next time
+                if (news.isEmpty() || Backend.getCurrentUser() == null || Backend.currentUserId() != me) return;
+                for (Message m : news) {
+                    if (m.getGroupId() == 0) seen[0] = Math.max(seen[0], m.getId());
+                    else seen[1] = Math.max(seen[1], m.getId());
+                }
+                onNewMessages(news);
+            }
+        }.execute();
+    }
+
+    private void onNewMessages(java.util.List<Message> news) {
+        boolean onMessages = "MESSAGES".equals(current);
+        Window w = SwingUtilities.getWindowAncestor(this);
+        boolean focused = w != null && w.isFocused();
+        if (onMessages) messagesForm.liveUpdate();            // shows them in the open chat right away
+        refreshBadges();
+
+        // pop up the newest one, unless the traveler is already looking at that chat
+        Message top = null;
+        for (Message m : news) {
+            if (onMessages && focused && messagesForm.isOpen(m)) continue;
+            top = m;
+            break;
+        }
+        if (top == null) return;
+        Message m = top;
+        User sender = Backend.getUser(m.getSenderId());                       // BACKEND
+        String where = m.getGroupId() == 0 ? null : Backend.getGroup(m.getGroupId()).getTitle();
+        int more = news.size() - 1;
+        String text = m.getContent() + (more > 0 ? "  (+" + more + " more)" : "");
+        MessagePopup.show(sender, sender.getFullName(), text, where, () -> {
+            if (m.getGroupId() == 0) openDirectChat(m.getSenderId());
+            else openGroupChat(m.getGroupId());
+        });
+        if (!focused && w != null) {
+            try {   // flash the app on the Windows taskbar
+                if (Taskbar.isTaskbarSupported() && Taskbar.getTaskbar().isSupported(Taskbar.Feature.USER_ATTENTION_WINDOW))
+                    Taskbar.getTaskbar().requestWindowUserAttention(w);
+            } catch (Exception ignore) { }
+        }
     }
 
     private void addPage(String key, Page p) {
@@ -141,6 +216,8 @@ public class MainDashboard extends JPanel {
         // BACKEND: Backend.getUnreadCount() reads from MySQL
         sidebar.refreshUser();
         sidebar.setBadge("NOTIFS", Backend.getUnreadCount(Backend.currentUserId()));
+        // BACKEND: Backend.getUnreadMessageCount() reads from MySQL
+        sidebar.setBadge("MESSAGES", Backend.getUnreadMessageCount(Backend.currentUserId()));
         int pending = 0;
         // BACKEND: Backend.getGroupsCreatedBy() reads from MySQL
         for (TravelGroup g : Backend.getGroupsCreatedBy(Backend.currentUserId()))
@@ -152,6 +229,7 @@ public class MainDashboard extends JPanel {
     public void logout() {
         if (!Theme.confirm(this, "Log out?", "See you on your next trip.", "Log out", false)) return;
         // BACKEND: Backend.logout() saves to MySQL
+        messageCheck.stop();
         Backend.logout();
         AppWindow.show(new LoginForm(), "SabayLakbay - Log In");
     }

@@ -23,6 +23,7 @@ public class TermsPage extends SubPage {
     private final JScrollPane scroll;
     private final JToggleButton termsTab = tab("Terms of Service");
     private final JToggleButton privacyTab = tab("Privacy Policy");
+    private final JToggleButton photosTab = tab("Photo credits");
 
     private TermsPage(boolean privacyFirst, boolean showAgree) {
         super(null, "Terms and Privacy", null);
@@ -34,9 +35,11 @@ public class TermsPage extends SubPage {
         ButtonGroup g = new ButtonGroup();
         g.add(termsTab);
         g.add(privacyTab);
-        termsTab.addActionListener(e -> showDoc(false));
-        privacyTab.addActionListener(e -> showDoc(true));
-        JPanel tabs = Theme.row(8, termsTab, privacyTab);
+        g.add(photosTab);
+        termsTab.addActionListener(e -> showDoc(0));
+        privacyTab.addActionListener(e -> showDoc(1));
+        photosTab.addActionListener(e -> showDoc(2));
+        JPanel tabs = Theme.row(8, termsTab, privacyTab, photosTab);
         JPanel top = new JPanel(new BorderLayout());
         top.setBackground(Color.WHITE);
         top.setBorder(BorderFactory.createCompoundBorder(
@@ -86,7 +89,7 @@ public class TermsPage extends SubPage {
 
         setContentPane(root);
         (privacyFirst ? privacyTab : termsTab).setSelected(true);
-        showDoc(privacyFirst);
+        showDoc(privacyFirst ? 1 : 0);
     }
 
     /** Opens the page with an "I agree" button. Returns true if the user tapped it. */
@@ -101,8 +104,8 @@ public class TermsPage extends SubPage {
         new TermsPage(privacyFirst, false).setVisible(true);
     }
 
-    private void showDoc(boolean privacy) {
-        text.setText("<html><body>" + (privacy ? PRIVACY : TERMS) + "</body></html>");
+    private void showDoc(int doc) {
+        text.setText("<html><body>" + (doc == 1 ? PRIVACY : doc == 2 ? photoCredits() : TERMS) + "</body></html>");
         text.setCaretPosition(0);
         SwingUtilities.invokeLater(() -> scroll.getVerticalScrollBar().setValue(0));
     }
@@ -128,6 +131,19 @@ public class TermsPage extends SubPage {
         b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         b.setPreferredSize(new Dimension(b.getPreferredSize().width + 16, 34));
         return b;
+    }
+
+    /** Where every landscape photo in the app comes from (they are free to use with credit). */
+    private static String photoCredits() {
+        StringBuilder b = new StringBuilder("<h1>Photo credits</h1>"
+                + "<p class='note'>The landscape photos in SabayLakbay come from Wikimedia Commons and are free to use "
+                + "under Creative Commons or public domain licenses. The photographer and exact license of each photo "
+                + "are on its Commons page below. The app shows no photos of people; travelers' pictures are only the "
+                + "profile photos they upload themselves.</p><ul>");
+        for (String[] c : sabaylakbay_1.model.Photos.CREDITS)
+            b.append("<li><b>").append(c[0]).append("</b><br>")
+             .append(sabaylakbay_1.model.Photos.page(c[1]).replace("&", "&amp;")).append("</li>");
+        return b.append("</ul><p class='note'>Maps: &copy; OpenStreetMap contributors.</p>").toString();
     }
 
     // =====================================================================

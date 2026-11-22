@@ -57,6 +57,22 @@ public class RoundButton extends JButton {
         return new Dimension(d.width, Math.max(d.height, 36));
     }
 
+    /**
+     * Keyboard focus: a 2px ring on the edge (red for danger buttons, the main color otherwise).
+     * Solid buttons also get a thin white ring inside it, so the ring shows against their fill.
+     */
+    private void paintFocusRing(Graphics2D g2, boolean solid) {
+        Color ring = (style == Style.DANGER || style == Style.DANGER_SOLID) ? Theme.RED : Theme.GREEN;
+        g2.setStroke(new BasicStroke(2f));
+        g2.setColor(ring);
+        g2.draw(new RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, 10, 10));
+        if (solid) {
+            g2.setColor(Color.WHITE);
+            g2.setStroke(new BasicStroke(1.5f));
+            g2.draw(new RoundRectangle2D.Float(3, 3, getWidth() - 6, getHeight() - 6, 7, 7));
+        }
+    }
+
     @Override
     protected void paintComponent(Graphics g) {
         Graphics2D g2 = (Graphics2D) g.create();
@@ -76,6 +92,7 @@ public class RoundButton extends JButton {
         if (!isEnabled()) { fill = new Color(0xE5E7EB); stroke = null; }
         if (fill != null) { g2.setColor(fill); g2.fill(r); }
         if (stroke != null) { g2.setColor(stroke); g2.draw(r); }
+        if (isFocusOwner() && isEnabled()) paintFocusRing(g2, fill != null && stroke == null && style != Style.LIGHT && style != Style.GHOST);
         g2.dispose();
         if (!isEnabled()) setForeground(Theme.HINT); else applyColors();
         super.paintComponent(g);

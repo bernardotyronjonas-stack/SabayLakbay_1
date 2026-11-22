@@ -18,8 +18,9 @@ import java.time.LocalTime;
  * CREATE GROUP FORM (also used to EDIT a group)
  * Opens from: sidebar "Create Group", or "Edit" on a group you created
  * Fields: trip name, destination, start/end date, category, difficulty, budget per person, max participants,
- *         transportation, meeting time, meeting place, description, notes for joiners, cover photo
- * Backend: Backend.createGroup(), Backend.updateGroup()
+ *         transportation, meeting time, meeting place, itinerary (stops with photo + map pin),
+ *         description, notes for joiners, cover photo
+ * Backend: Backend.createGroup(), Backend.updateGroup(), Backend.getItinerary(), Backend.saveItinerary()
  */
 public class CreateGroupForm extends Page {
 
@@ -42,7 +43,11 @@ public class CreateGroupForm extends Page {
     private final TextAreaBox notes = new TextAreaBox("Notes for joiners: what to bring, rules, reminders...", 4);
     private final ImageBox preview = new ImageBox(null, "new", 12, true);
     private final MapPicker mapPicker = new MapPicker();   // where the trip goes (optional pin)
+    private final MapPicker meetPicker = new MapPicker();  // where the group meets (used for "Groups near you")
     private final JLabel imageName = Theme.label("No photo chosen", Font.PLAIN, 12, Theme.TEXT_GRAY);
+    // stops of the trip; new stop maps start on the destination pin
+    private final ItineraryEditor itinerary = new ItineraryEditor(start::getDate, end::getDate,
+            () -> mapPicker.getLat() == null ? null : new Double[]{mapPicker.getLat(), mapPicker.getLng()});
 
     private final JLabel pageTitle = Theme.title("Create Travel Group");
     private final JLabel pageSub = Theme.subtitle("Fill in the trip details. Travelers can send a request to join.");
@@ -84,7 +89,9 @@ public class CreateGroupForm extends Page {
         start.onChange(() -> {
             end.setRange(start.getDate(), null);
             if (end.getDate().isBefore(start.getDate())) end.setDate(start.getDate());
+            itinerary.datesChanged();
         });
+        end.onChange(itinerary::datesChanged);
         maxMembers.setFont(Theme.font(Font.PLAIN, 13));
         maxMembers.setPreferredSize(new Dimension(100, 40));
 
@@ -113,6 +120,15 @@ public class CreateGroupForm extends Page {
         c.gridy = ++y; c.gridx = 0; card.add(field("Mode of transportation", transport), c);
         c.gridx = 1; card.add(field("Meeting time", meetingTime), c);
         c.gridy = ++y; c.gridx = 0; c.gridwidth = 2; card.add(field("Meeting place", meetingPlace), c);
+        c.gridy = ++y; card.add(field("Pin the meeting place (travelers near it will see your trip)", meetPicker), c);
+        meetingPlace.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override public void focusLost(java.awt.event.FocusEvent e) { meetPicker.setSearchText(meetingPlace.getText().trim()); }
+        });
+
+        c.gridy = ++y; card.add(section("Itinerary"), c);
+        c.gridy = ++y; card.add(Theme.label("Plan the trip stop by stop. Joiners see it on the trip page before they ask to join.",
+                Font.PLAIN, 12, Theme.TEXT_GRAY), c);
+        c.gridy = ++y; card.add(itinerary, c);
 
         c.gridy = ++y; card.add(section("Details"), c);
         c.gridy = ++y; card.add(field("Trip description", description), c);
@@ -129,7 +145,8 @@ public class CreateGroupForm extends Page {
         pr.add(Theme.gap(8));
         pr.add(Theme.left(imageName));
         pr.add(Theme.gap(4));
-        pr.add(Theme.left(Theme.label("JPG or PNG, landscape looks best.", Font.PLAIN, 11, Theme.HINT)));
+        pr.add(Theme.left(Theme.label("JPG or PNG, landscape looks best. No photo? We'll show one of the destination.",
+                Font.PLAIN, 11, Theme.TEXT_GRAY)));
         ph.add(pr);
         c.gridy = ++y; card.add(field("Cover photo", ph), c);
 
@@ -193,6 +210,8 @@ public class CreateGroupForm extends Page {
         notes.setText("");
         setImage(null);
         mapPicker.setPin(null, null);
+        meetPicker.setPin(null, null);
+        itinerary.clear();
     }
 
     /** Form filled with an existing group. */
@@ -212,16 +231,20 @@ public class CreateGroupForm extends Page {
         category.setSelectedItem(g.getCategory());
         difficulty.setSelectedItem(g.getDifficulty());
         meetingPlace.setText(g.getMeetingPlace());
+        meetPicker.setPin(g.getMeetingLatitude(), g.getMeetingLongitude());
         meetingTime.setTime(g.getMeetingTime());
         description.setText(g.getDescription());
         notes.setText(g.getCreatorNotes());
         setImage(g.getImagePath());
+        // BACKEND: Backend.getItinerary() reads from MySQL
+        itinerary.load(Backend.getItinerary(g.getId()));
     }
 
     private void setImage(String path) {
         imagePath = path;
         preview.setPath(path);
-        imageName.setText(path == null ? "No photo chosen" : new File(path).getName());
+        imageName.setText(path == null ? "No photo chosen"
+                : sabaylakbay_1.model.Photos.isStockPhoto(path) ? "Destination photo (Wikimedia Commons)" : new File(path).getName());
     }
 
     private void choosePhoto() {
@@ -253,24 +276,36 @@ public class CreateGroupForm extends Page {
         Object t = transport.getSelectedItem();
         g.setTransportMode(t == null ? "" : t.toString().trim());
         g.setMeetingPlace(meetingPlace.getText().trim());
+        g.setMeetingLatitude(meetPicker.getLat());   // null when no pin was dropped
+        g.setMeetingLongitude(meetPicker.getLng());
         g.setMeetingTime(meetingTime.getTime());
         g.setDescription(description.getText().trim());
         g.setCreatorNotes(notes.getText().trim());
-        g.setImagePath(imagePath);
+        // a destination photo picked by the app isn't saved, so it follows the destination if it changes
+        g.setImagePath(sabaylakbay_1.model.Photos.isStockPhoto(imagePath) ? null : imagePath);
 
         if (editing == null) {
             g.setCreatorId(Backend.currentUserId());
             if (!validateForm(g)) return;
-            // BACKEND: Backend.createGroup() saves to MySQL
-            if (Theme.run(this, () -> Backend.createGroup(g))) app.openMyGroups(0);
+            // BACKEND: Backend.createGroup() then Backend.saveItinerary() save to MySQL
+            if (!Theme.run(this, () -> Backend.createGroup(g))) return;
+            if (!saveItinerary(g.getId())) { app.openMyGroups(0); return; }   // the trip exists; the stops can be fixed in Edit
+            app.openMyGroups(0);
         } else {
             if (!validateForm(g)) return;
-            // BACKEND: Backend.updateGroup() saves to MySQL
-            if (Theme.run(this, () -> Backend.updateGroup(g))) {
+            // BACKEND: Backend.updateGroup() then Backend.saveItinerary() save to MySQL
+            if (Theme.run(this, () -> Backend.updateGroup(g)) && saveItinerary(g.getId())) {
                 editing = null;
                 app.openMyGroups(0);
             }
         }
+    }
+
+    /** Saves the stops added, changed or removed in the Itinerary section. */
+    private boolean saveItinerary(int groupId) {
+        if (itinerary.getStops().isEmpty() && itinerary.getRemovedIds().isEmpty()) return true;
+        return Theme.run(this, () -> Backend.saveItinerary(groupId, itinerary.getStops(),
+                itinerary.getNewPhotos(), itinerary.getRemovedIds()));
     }
 
     /** Simple checks done by the front end before calling the backend. */
@@ -282,6 +317,11 @@ public class CreateGroupForm extends Page {
         else if (g.getEndDate().isBefore(g.getStartDate())) error = "End date can't be before the start date.";
         else if (editing == null && g.getStartDate().isBefore(LocalDate.now())) error = "Start date can't be in the past.";
         else if (g.getBudgetPerPerson() <= 0) error = "Budget per person must be more than 0.";
+        else if (!itinerary.outside(g.getStartDate(), g.getEndDate()).isEmpty()) {
+            java.util.List<sabaylakbay_1.model.Activity> out = itinerary.outside(g.getStartDate(), g.getEndDate());
+            error = (out.size() == 1 ? "The stop \"" + out.get(0).getTitle() + "\" is" : out.size() + " itinerary stops are")
+                    + " outside the new trip dates. Edit or remove " + (out.size() == 1 ? "it" : "them") + " in the Itinerary section.";
+        }
         if (error != null) Theme.error(this, error);
         return error == null;
     }

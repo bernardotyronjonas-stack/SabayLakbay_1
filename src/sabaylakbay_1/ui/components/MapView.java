@@ -153,6 +153,31 @@ public class MapView extends JComponent {
     /** Runs whenever the pin is dropped, moved or removed. */
     public void onPinChange(Runnable r) { listeners.add(r); }
 
+    // ----- radius circle (for "Groups near you") -----
+    private Double radiusKm;
+    private List<double[]> dots = new ArrayList<>();
+
+    /** Draws a shaded circle of this many km around the pin. null = no circle. */
+    public void setRadiusKm(Double km) { radiusKm = km; repaint(); }
+
+    /** Small orange dots, e.g. the meeting places of trips in the circle. Each item is {lat, lng}. */
+    public void setDots(List<double[]> points) { dots = points == null ? new ArrayList<>() : points; repaint(); }
+
+    /** Zooms so the whole circle fits in the map. */
+    public void fitRadius() {
+        if (pinLat == null || radiusKm == null) return;
+        int w = getWidth() > 0 ? getWidth() : getPreferredSize().width;
+        int h = getHeight() > 0 ? getHeight() : getPreferredSize().height;
+        int z = MAX_ZOOM;
+        while (z > MIN_ZOOM && radiusPx(z) * 2 > Math.min(w, h) * 0.82) z--;
+        setView(pinLat, pinLng, z);
+    }
+
+    private double radiusPx(int z) {
+        double metersPerPixel = 156543.03392 * Math.cos(Math.toRadians(pinLat)) / (1 << z);
+        return radiusKm * 1000 / metersPerPixel;
+    }
+
     // ================= map math (Web Mercator, same as Google / OpenStreetMap) =================
 
     private static double lngToX(double lng, int z) { return (lng + 180) / 360 * TILE * (1 << z); }
@@ -239,6 +264,26 @@ public class MapView extends JComponent {
             }
         }
         offline = total > 0 && failedCount == total;
+
+        // radius circle and dots
+        if (pinLat != null && radiusKm != null) {
+            Point2D c = toScreen(pinLat, pinLng);
+            double r = radiusPx(zoom);
+            Shape circle = new java.awt.geom.Ellipse2D.Double(c.getX() - r, c.getY() - r, r * 2, r * 2);
+            g2.setColor(new Color(Theme.GREEN.getRed(), Theme.GREEN.getGreen(), Theme.GREEN.getBlue(), 38));
+            g2.fill(circle);
+            g2.setColor(new Color(Theme.GREEN.getRed(), Theme.GREEN.getGreen(), Theme.GREEN.getBlue(), 200));
+            g2.setStroke(new BasicStroke(2f));
+            g2.draw(circle);
+            g2.setStroke(new BasicStroke(1f));
+        }
+        for (double[] d : dots) {
+            Point2D p = toScreen(d[0], d[1]);
+            g2.setColor(Color.WHITE);
+            g2.fill(new java.awt.geom.Ellipse2D.Double(p.getX() - 7, p.getY() - 7, 14, 14));
+            g2.setColor(Theme.ORANGE);
+            g2.fill(new java.awt.geom.Ellipse2D.Double(p.getX() - 5, p.getY() - 5, 10, 10));
+        }
 
         // pin
         if (pinLat != null) {

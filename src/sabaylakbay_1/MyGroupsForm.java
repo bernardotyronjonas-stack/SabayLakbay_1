@@ -110,7 +110,7 @@ public class MyGroupsForm extends Page {
                 Theme.iconText("pin", g.getDestination(), Theme.TEXT_GRAY),
                 Theme.iconText("users", g.getCurrentMembers() + "/" + g.getMaxMembers() + " members", Theme.TEXT_GRAY))));
         t.add(Theme.gap(6));
-        t.add(Theme.left(Theme.label(Theme.peso(g.getBudgetPerPerson()) + " /person", Font.BOLD, 14, Theme.ORANGE)));
+        t.add(Theme.left(Theme.label(Theme.peso(g.getBudgetPerPerson()) + " est. / person", Font.BOLD, 14, Theme.ORANGE)));
         JPanel tc = Theme.clear(new GridBagLayout());
         GridBagConstraints c = new GridBagConstraints();
         c.weightx = 1; c.fill = GridBagConstraints.HORIZONTAL;
