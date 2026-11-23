@@ -59,6 +59,12 @@ public class AdminTripsForm extends Page {
         tabs.onChange(i -> refresh());
     }
 
+    /** Shows all trips (past and upcoming) to one destination. */
+    public void showDestination(String destination) {
+        search.setText(destination);
+        tabs.setSelected(4);          // All
+    }
+
     @Override
     public void refresh() {
         // BACKEND: Backend.getAllTrips() reads from MySQL

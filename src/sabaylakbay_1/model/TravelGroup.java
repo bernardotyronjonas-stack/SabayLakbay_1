@@ -24,6 +24,7 @@ public class TravelGroup {
     private String creatorNotes;
     private String imagePath;
     private Double latitude;     // map pin, null = no pin
+    private boolean openJoin;    // true = verified travelers join right away; false = the organizer approves each request
     private Double longitude;
     private int creatorId;
     private String creatorName;
@@ -104,4 +105,8 @@ public class TravelGroup {
     public Double getMeetingLongitude() { return meetingLongitude; }
     public void setMeetingLongitude(Double v) { this.meetingLongitude = v; }
     public boolean hasMeetingPin() { return meetingLatitude != null && meetingLongitude != null; }
+
+    /** OPEN JOIN: verified travelers join right away. Otherwise (REQUEST) the organizer approves each one. */
+    public boolean isOpenJoin() { return openJoin; }
+    public void setOpenJoin(boolean openJoin) { this.openJoin = openJoin; }
 }

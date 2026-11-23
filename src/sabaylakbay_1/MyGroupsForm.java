@@ -19,12 +19,13 @@ import java.util.List;
  *   Created by me : your groups + their join requests (Approve / Reject), Edit, Cancel
  *   Joined        : groups you are in (View, Itinerary, Chat, Leave)
  *   My Requests   : requests you sent and their status (Pending / Approved / Rejected), Cancel Request
+ *   Saved         : trips you saved with the heart (View, remove from saved)
  * Backend: getGroupsCreatedBy, getGroupsJoinedBy, getRequestsByUser, getPendingRequestsForGroup,
- *          approveRequest, rejectRequest, cancelGroup, leaveGroup, cancelJoinRequest
+ *          approveRequest, rejectRequest, cancelGroup, leaveGroup, cancelJoinRequest, getSavedGroups, toggleSaved
  */
 public class MyGroupsForm extends Page {
 
-    private final TabBar tabs = new TabBar("Created by me", "Joined", "My Requests");
+    private final TabBar tabs = new TabBar("Created by me", "Joined", "My Requests", "Saved");
     private final JPanel list = new Theme.ScrollableBox(null);
 
     public MyGroupsForm(MainDashboard app) {
@@ -59,9 +60,12 @@ public class MyGroupsForm extends Page {
             List<TravelGroup> joined = Backend.getGroupsJoinedBy(me);
             // BACKEND: Backend.getRequestsByUser() reads from MySQL
             List<JoinRequest> reqs = Backend.getRequestsByUser(me);
+            // BACKEND: Backend.getSavedGroups() reads from MySQL
+            List<TravelGroup> saved = Backend.getSavedGroups(me);
             tabs.setTitle(0, "Created by me (" + created.size() + ")");
             tabs.setTitle(1, "Joined (" + joined.size() + ")");
             tabs.setTitle(2, "My Requests (" + reqs.size() + ")");
+            tabs.setTitle(3, "Saved (" + saved.size() + ")");
 
             switch (tabs.getSelected()) {
                 case 0:
@@ -72,9 +76,14 @@ public class MyGroupsForm extends Page {
                     if (joined.isEmpty()) list.add(empty("suitcase", "You haven't joined a group yet. Browse groups on Home."));
                     for (TravelGroup g : joined) addRow(joinedCard(g));
                     break;
-                default:
+                case 2:
                     if (reqs.isEmpty()) list.add(empty("send", "You haven't sent any join requests."));
                     for (JoinRequest r : reqs) addRow(requestCard(r));
+                    break;
+                default:
+                    if (saved.isEmpty()) list.add(empty("heart", "No saved trips yet. Tap the heart on a trip to save it for later.",
+                            "Browse trips", () -> app.showPage("HOME")));
+                    for (TravelGroup g : saved) addRow(savedCard(g));
             }
         } catch (RuntimeException ex) {
             Theme.error(this, ex.getMessage());
@@ -224,6 +233,20 @@ public class MyGroupsForm extends Page {
             });
             card.add(groupSummary(g, viewButton(g), trip, chat, leave));
         }
+        return card;
+    }
+
+    // ----- Saved tab -----
+    private JComponent savedCard(TravelGroup g) {
+        RoundPanel card = RoundPanel.card(new BorderLayout());
+        card.setBorder(Theme.pad(16, 16, 16, 18));
+        RoundButton remove = new RoundButton("Remove", RoundButton.Style.GHOST).icon("heartFilled").small();
+        remove.setToolTipText("Remove from saved trips");
+        remove.addActionListener(e -> {
+            // BACKEND: Backend.toggleSaved() saves to MySQL
+            if (Theme.run(this, () -> Backend.toggleSaved(g.getId(), Backend.currentUserId()))) refresh();
+        });
+        card.add(groupSummary(g, viewButton(g), remove));
         return card;
     }
 

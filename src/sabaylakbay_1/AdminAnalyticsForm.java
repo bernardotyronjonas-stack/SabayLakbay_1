@@ -29,7 +29,10 @@ public class AdminAnalyticsForm extends Page {
     private final JComboBox<String> period = new JComboBox<>(PERIODS);
     private final JPanel box = new Theme.ScrollableBox(null);
 
+    private final AdminDashboard admin;
+
     public AdminAnalyticsForm(AdminDashboard admin) {
+        this.admin = admin;
         period.setSelectedIndex(1);
         period.setFont(Theme.font(Font.PLAIN, 13));
         period.setPreferredSize(new Dimension(160, 38));
@@ -77,7 +80,8 @@ public class AdminAnalyticsForm extends Page {
         regChart.setData(regs);
         ColumnChart tripChart = new ColumnChart("Created", Theme.GREEN, "Completed", new Color(0x7DB9A0));
         tripChart.setData(trips);
-        BarChart placeChart = new BarChart(new Color(0x0F7287), "travelers");
+        BarChart placeChart = new BarChart(new Color(0x0F7287), "travelers")
+                .onClick(admin::openTripsTo, "Click a place to see its trips");
         placeChart.setData(places);
         ColumnChart reportChart = new ColumnChart("Filed", Theme.ORANGE, "Resolved", Theme.GREEN);
         reportChart.setData(reports);

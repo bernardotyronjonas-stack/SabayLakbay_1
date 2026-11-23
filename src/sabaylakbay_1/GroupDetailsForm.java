@@ -25,7 +25,8 @@ import java.util.List;
  *   - member:     Leave Group, View Itinerary, Group Chat
  *   - creator:    Cancel Group, Edit, Join Requests, Group Chat
  *   - everyone:   Contact creator, Report this group
- * Backend: getGroup, getMembers, getRequest, sendJoinRequest, cancelJoinRequest, leaveGroup, cancelGroup
+ * Backend: getGroup, getMembers, getRequest, sendJoinRequest, joinNow, cancelJoinRequest, leaveGroup, cancelGroup,
+ *          isSaved / toggleSaved (heart)
  */
 public class GroupDetailsForm extends SubPage {   // opens inside the main window, with a Back bar
 
@@ -53,6 +54,7 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
         }
         JPanel root = new JPanel(new BorderLayout());
         root.setBackground(Color.WHITE);
+        itineraryAnchor = null;
         root.add(Theme.scroll(buildContent()), BorderLayout.CENTER);
         root.add(buildActionBar(), BorderLayout.SOUTH);
         setContentPane(root);
@@ -77,9 +79,22 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
         body.setAlignmentX(LEFT_ALIGNMENT);
         box.add(body);
 
-        // title + status
-        JPanel titleRow = Theme.row(12, Theme.label(g.getTitle(), Font.BOLD, 24, Theme.TEXT_DARK), statusChip());
-        body.add(Theme.left(titleRow));
+        // title + status + how to join, and the heart to save it (right)
+        Chip joinChip = g.isOpenJoin() ? new Chip("Open join", Theme.GREEN_LIGHT, Theme.GREEN)
+                                       : new Chip("Approval needed", new Color(0xF2F4F7), new Color(0x475467));
+        joinChip.setToolTipText(g.isOpenJoin() ? "Verified travelers join right away"
+                                               : "The organizer approves each request");
+        JPanel titleRow = Theme.row(12, Theme.label(g.getTitle(), Font.BOLD, 24, Theme.TEXT_DARK), statusChip(), joinChip);
+        JPanel titleLine = Theme.clear(new BorderLayout(12, 0));
+        titleLine.add(titleRow, BorderLayout.CENTER);
+        if (g.getCreatorId() != me) {
+            JPanel hw = Theme.clear(new GridBagLayout());
+            hw.add(new HeartButton(g.getId(), 40));
+            titleLine.add(hw, BorderLayout.EAST);
+        }
+        titleLine.setAlignmentX(LEFT_ALIGNMENT);
+        titleLine.setMaximumSize(new Dimension(Integer.MAX_VALUE, titleLine.getPreferredSize().height));
+        body.add(titleLine);
         body.add(Theme.gap(4));
         body.add(Theme.left(Theme.iconText("pin", g.getDestination(), Theme.TEXT_GRAY)));
         body.add(Theme.gap(18));
@@ -123,25 +138,50 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
         body.add(fullWidth(info));
         body.add(Theme.gap(24));
 
+        // ITINERARY: right under the trip details, so travelers see the plan before they decide to join.
+        // Always shown; when there are no stops yet it says so (and the organizer can add them).
+        // BACKEND: Backend.getItinerary() reads from MySQL
+        List<Activity> stops = Backend.getItinerary(g.getId());
+        JLabel itTitle = Theme.sectionTitle("Itinerary");
+        itineraryAnchor = itTitle;
+        itineraryStops = stops.size();
+        JLabel itCount = Theme.label(stops.isEmpty() ? "No stops yet"
+                : stops.size() + (stops.size() == 1 ? " stop" : " stops") + " \u2022 the plan you're joining", Font.PLAIN, 12, Theme.TEXT_GRAY);
+        body.add(Theme.left(Theme.row(10, itTitle, itCount)));
+        body.add(Theme.gap(8));
+        RoundPanel itBox = new RoundPanel(new BorderLayout(), 14, new Color(0xFAFBFC), Theme.BORDER);
+        itBox.setBorder(Theme.pad(14, 18, 14, 18));
+        if (!stops.isEmpty()) {
+            ItineraryView it = new ItineraryView();
+            it.show(stops, g.getStartDate(), null, null);
+            itBox.add(it);
+        } else {
+            boolean mine = g.getCreatorId() == me;
+            JPanel empty = Theme.clear(new BorderLayout(14, 0));
+            empty.add(new JLabel(Icons.get("map", 22, Theme.GREEN)), BorderLayout.WEST);
+            empty.add(Theme.middleLeft(Theme.label(mine
+                    ? "You haven't added the plan yet. Travelers decide faster when they can see it."
+                    : "The organizer hasn't added the plan yet. You can ask what's planned before joining.",
+                    Font.PLAIN, 13, Theme.TEXT_GRAY)), BorderLayout.CENTER);
+            RoundButton act = mine ? new RoundButton("Add the itinerary", RoundButton.Style.OUTLINE).icon("plus").small()
+                                   : new RoundButton("Ask the organizer", RoundButton.Style.OUTLINE).icon("chat").small();
+            act.addActionListener(e -> {
+                dispose();
+                if (mine) app.editGroup(g); else app.openDirectChat(g.getCreatorId());
+            });
+            JPanel aw = Theme.clear(new GridBagLayout());
+            aw.add(act);
+            empty.add(aw, BorderLayout.EAST);
+            itBox.add(empty);
+        }
+        body.add(fullWidth(itBox));
+        body.add(Theme.gap(24));
+
         // description
         body.add(Theme.left(Theme.sectionTitle("About this trip")));
         body.add(Theme.gap(8));
         body.add(Theme.left(Theme.wrapLabel(g.getDescription(), 760, Font.PLAIN, 13, Theme.TEXT_DARK)));
         body.add(Theme.gap(20));
-
-        // itinerary: the plan stop by stop, so travelers know what they're joining
-        // BACKEND: Backend.getItinerary() reads from MySQL
-        List<Activity> stops = Backend.getItinerary(g.getId());
-        if (!stops.isEmpty()) {
-            JLabel itTitle = Theme.sectionTitle("Itinerary");
-            JLabel itCount = Theme.label(stops.size() + (stops.size() == 1 ? " stop" : " stops"), Font.PLAIN, 12, Theme.TEXT_GRAY);
-            body.add(Theme.left(Theme.row(10, itTitle, itCount)));
-            body.add(Theme.gap(6));
-            ItineraryView it = new ItineraryView();
-            it.show(stops, g.getStartDate(), null, null);
-            body.add(fullWidth(it));
-            body.add(Theme.gap(20));
-        }
 
         // creator notes
         if (g.getCreatorNotes() != null && !g.getCreatorNotes().isBlank()) {
@@ -372,9 +412,20 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
         } else {
             if (req != null && req.getStatus() == RequestStatus.REJECTED)
                 btns.add(Theme.label("Your last request was not approved.", Font.PLAIN, 12, Theme.TEXT_GRAY));
-            RoundButton join = new RoundButton("Send Join Request");
-            join.addActionListener(e -> sendRequest());
-            btns.add(join);
+            if (itineraryAnchor != null && itineraryStops > 0) {          // see the plan before joining
+                RoundButton plan = new RoundButton("See itinerary (" + itineraryStops + ")", RoundButton.Style.OUTLINE).icon("map");
+                plan.addActionListener(e -> scrollToItinerary());
+                btns.add(plan);
+            }
+            if (g.isOpenJoin()) {
+                RoundButton join = new RoundButton("Join now").icon("check");
+                join.addActionListener(e -> joinNow());
+                btns.add(join);
+            } else {
+                RoundButton join = new RoundButton("Send Join Request");
+                join.addActionListener(e -> sendRequest());
+                btns.add(join);
+            }
         }
         bar.add(btns, BorderLayout.EAST);
         return bar;
@@ -384,6 +435,25 @@ public class GroupDetailsForm extends SubPage {   // opens inside the main windo
         RoundButton chat = new RoundButton("Group Chat").icon("chat");
         chat.addActionListener(e -> { dispose(); app.openGroupChat(groupId); });
         return chat;
+    }
+
+    /** Open-join trips: join right away after one confirmation (no organizer approval). */
+    private JComponent itineraryAnchor;      // the Itinerary heading, for "See itinerary"
+    private int itineraryStops;
+
+    private void scrollToItinerary() {
+        if (itineraryAnchor == null) return;
+        JComponent p = (JComponent) itineraryAnchor.getParent();
+        Rectangle r = SwingUtilities.convertRectangle(itineraryAnchor, new Rectangle(0, -12, 10, 500), p);
+        p.scrollRectToVisible(r);
+    }
+
+    private void joinNow() {
+        if (!Theme.confirm(this, "Join \"" + g.getTitle() + "\"?",
+                "You'll be added to the group right away and can chat with the others. "
+                        + "Check the itinerary and the meeting place first.", "Join now", false)) return;
+        // BACKEND: Backend.joinNow() saves to MySQL
+        if (Theme.run(this, () -> Backend.joinNow(groupId, Backend.currentUserId()))) reload();
     }
 
     private void sendRequest() {

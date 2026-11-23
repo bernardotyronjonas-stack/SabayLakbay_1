@@ -32,6 +32,9 @@ public class CreateGroupForm extends Page {
     private final DateField end = DateField.date();
     private final RoundTextField budget = new RoundTextField("e.g. 1500");
     private final JSpinner maxMembers = new JSpinner(new SpinnerNumberModel(8, 2, 100, 1));
+    // how travelers join: the organizer approves each one (default), or verified travelers join right away
+    private final OptionCard requestJoin = new OptionCard("users", "Request to join", "You approve each traveler before they join.");
+    private final OptionCard openJoin = new OptionCard("check", "Open join", "Verified travelers join right away. Good for big, easy trips.");
     private final JComboBox<String> transport = new JComboBox<>(TRANSPORT);
     private static final String[] CATEGORIES = {"Hiking", "Beach", "Island hopping", "Food trip", "Road trip", "Sightseeing",
             "Camping", "Adventure", "City tour", "Other"};
@@ -106,6 +109,15 @@ public class CreateGroupForm extends Page {
         c.gridx = 1; card.add(field("Difficulty *", difficulty), c);
         c.gridy = ++y; c.gridx = 0; card.add(field("Estimated budget per person (\u20B1) *", budget), c);
         c.gridx = 1; card.add(field("Maximum participants *", maxMembers), c);
+        ButtonGroup joinGroup = new ButtonGroup();
+        joinGroup.add(requestJoin);
+        joinGroup.add(openJoin);
+        requestJoin.setSelected(true);
+        JPanel joinRow = Theme.clear(new GridLayout(1, 2, 16, 0));
+        joinRow.add(requestJoin);
+        joinRow.add(openJoin);
+        c.gridy = ++y; c.gridx = 0; c.gridwidth = 2; card.add(field("How do travelers join? *", joinRow), c);
+        c.gridwidth = 1;
 
         c.gridy = ++y; c.gridx = 0; c.gridwidth = 2; card.add(section("Pin the destination"), c);
         c.gridy = ++y; card.add(mapPicker, c);
@@ -201,6 +213,7 @@ public class CreateGroupForm extends Page {
         end.setDate(LocalDate.now().plusDays(16));
         budget.setText("");
         maxMembers.setValue(8);
+        requestJoin.setSelected(true);
         transport.setSelectedIndex(0);
         category.setSelectedIndex(0);
         difficulty.setSelectedItem(Difficulty.EASY);
@@ -227,6 +240,7 @@ public class CreateGroupForm extends Page {
         end.setDate(g.getEndDate());
         budget.setText(String.valueOf((long) g.getBudgetPerPerson()));
         maxMembers.setValue(g.getMaxMembers());
+        (g.isOpenJoin() ? openJoin : requestJoin).setSelected(true);
         transport.setSelectedItem(g.getTransportMode());
         category.setSelectedItem(g.getCategory());
         difficulty.setSelectedItem(g.getDifficulty());
@@ -270,6 +284,7 @@ public class CreateGroupForm extends Page {
         g.setEndDate(end.getDate());
         g.setBudgetPerPerson(b);
         g.setMaxMembers((Integer) maxMembers.getValue());
+        g.setOpenJoin(openJoin.isSelected());
         Object cat = category.getSelectedItem();
         g.setCategory(cat == null ? "" : cat.toString().trim());
         g.setDifficulty((Difficulty) difficulty.getSelectedItem());

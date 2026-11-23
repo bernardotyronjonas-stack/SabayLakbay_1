@@ -40,6 +40,7 @@ public class AdminDashboard extends JPanel {
             {"ANALYTICS", "Analytics", "chart"},
             {"LOG", "Activity Log", "note"}};
 
+    private final AdminTripsForm tripsForm = new AdminTripsForm(this);
     private final Sidebar sidebar;
     private final FadeCards content = new FadeCards(true);
     private final Map<String, Page> pages = new LinkedHashMap<>();
@@ -57,7 +58,7 @@ public class AdminDashboard extends JPanel {
         addPage("OVERVIEW", new AdminOverviewForm(this));
         addPage("USERS", new AdminUsersForm(this));
         addPage("VERIFY", new AdminVerificationsForm(this));
-        addPage("TRIPS", new AdminTripsForm(this));
+        addPage("TRIPS", tripsForm);
         addPage("REPORTS", reportsForm);
         addPage("ANNOUNCE", new AdminAnnouncementsForm(this));
         addPage("ANALYTICS", new AdminAnalyticsForm(this));
@@ -83,6 +84,12 @@ public class AdminDashboard extends JPanel {
         if (!key.equals(current)) content.show(key);
         current = key;
         refreshBadges();
+    }
+
+    /** Opens Trips showing every trip to one place (from "Most visited places" / "Popular destinations"). */
+    public void openTripsTo(String destination) {
+        tripsForm.showDestination(destination);
+        showPage("TRIPS");
     }
 
     /** Opens the Reports page on a tab (0 = Pending, 1 = Under review, 2 = Resolved, 3 = Dismissed, 4 = All). */

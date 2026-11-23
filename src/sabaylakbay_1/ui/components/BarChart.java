@@ -23,6 +23,30 @@ public class BarChart extends ChartBase {
 
     public void setData(List<ChartPoint> d) { data = d; repaint(); }
 
+    /** Makes each bar clickable (e.g. a place opens its trips). Shows a hand cursor and a tooltip. */
+    public BarChart onClick(java.util.function.Consumer<String> action, String tip) {
+        setToolTipText(tip);
+        addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override public void mouseMoved(java.awt.event.MouseEvent e) {
+                setCursor(Cursor.getPredefinedCursor(rowAt(e.getY()) >= 0 ? Cursor.HAND_CURSOR : Cursor.DEFAULT_CURSOR));
+            }
+        });
+        addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override public void mouseClicked(java.awt.event.MouseEvent e) {
+                int i = rowAt(e.getY());
+                if (i >= 0) action.accept(data.get(i).getLabel());
+            }
+        });
+        return this;
+    }
+
+    private int rowAt(int y) {
+        if (data.isEmpty()) return -1;
+        int rowH = Math.max(24, Math.min(36, getHeight() / data.size()));
+        int i = y / rowH;
+        return i < data.size() ? i : -1;
+    }
+
     @Override
     public Dimension getPreferredSize() {
         return new Dimension(400, Math.max(120, data.size() * 34 + 10));

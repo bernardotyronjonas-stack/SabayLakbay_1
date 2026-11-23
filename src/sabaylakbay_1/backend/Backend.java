@@ -561,6 +561,17 @@ public final class Backend {
                 Database.update("UPDATE itinerary SET latitude = ?, longitude = ? "
                         + "WHERE location = ? AND latitude IS NULL", p[1], p[2], p[0]);
         }
+        // open join + saved trips (same as database/add-join-mode-and-saved.sql)
+        try {
+            Database.exists("SELECT join_mode FROM activities LIMIT 1");
+        } catch (RuntimeException missing) {
+            Database.update("ALTER TABLE activities ADD COLUMN join_mode VARCHAR(10) NOT NULL DEFAULT 'REQUEST'");
+        }
+        Database.update("CREATE TABLE IF NOT EXISTS saved_groups ("
+                + "user_id INT NOT NULL, activity_id INT NOT NULL, saved_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                + "PRIMARY KEY (user_id, activity_id), "
+                + "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE, "
+                + "FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE)");
         // security question for Forgot password (same as database/add-security-questions.sql)
         try {
             Database.exists("SELECT security_question FROM users LIMIT 1");
@@ -880,6 +891,7 @@ public final class Backend {
                 g.getMeetingTime(), g.getTransportMode(), g.getCreatorNotes(), g.getImagePath(),
                 g.getLatitude(), g.getLongitude(), g.getMeetingLatitude(), g.getMeetingLongitude());
         g.setId(id);
+        Database.update("UPDATE activities SET join_mode = ? WHERE activity_id = ?", g.isOpenJoin() ? "OPEN" : "REQUEST", id);
         Toast.show("Your trip \"" + g.getTitle() + "\" is now live!");
         return id;
     }
@@ -900,6 +912,7 @@ public final class Backend {
                 g.getDifficulty(), g.getBudgetPerPerson(), g.getMaxMembers(), g.getMeetingPlace(), g.getMeetingTime(),
                 g.getTransportMode(), g.getCreatorNotes(), g.getImagePath(), g.getLatitude(), g.getLongitude(),
                 g.getMeetingLatitude(), g.getMeetingLongitude(), g.getId());
+        Database.update("UPDATE activities SET join_mode = ? WHERE activity_id = ?", g.isOpenJoin() ? "OPEN" : "REQUEST", g.getId());
         notifyMembers(g.getId(), currentUserId(), "\"" + g.getTitle() + "\" details were updated by the organizer.");
         Toast.show("Changes saved");
     }
@@ -959,6 +972,56 @@ public final class Backend {
                 userId, groupId, message);
         notify(g.getCreatorId(), getUser(userId).getFullName() + " wants to join \"" + g.getTitle() + "\".", groupId);
         Toast.show("Join request sent");
+    }
+
+    /**
+     * JOIN NOW (open-join trips only): the traveler becomes a member right away, no approval.
+     * Same checks as a request: approved ID, not full, not cancelled, not blocked by the organizer.
+     */
+    public static void joinNow(int groupId, int userId) {
+        requireVerifiedId(userId);
+        TravelGroup g = getGroup(groupId);
+        if (g.isCancelled()) throw new RuntimeException("This trip was cancelled.");
+        if (!g.isOpenJoin()) throw new RuntimeException("This trip needs the organizer's approval. Send a join request instead.");
+        if (g.getCreatorId() == userId) throw new RuntimeException("You organize this trip.");
+        if (isMember(groupId, userId)) throw new RuntimeException("You are already a member of this trip.");
+        if (isBlocked(g.getCreatorId(), userId)) throw new RuntimeException("You can't join this trip.");
+        if (g.isFull()) throw new RuntimeException("This trip is already full.");
+        // a pending request (from before the trip became open) is simply approved
+        JoinRequest last = getRequest(groupId, userId);
+        if (last != null && last.getStatus() == RequestStatus.PENDING)
+            Database.update("UPDATE bookings SET status = 'APPROVED' WHERE booking_id = ?", last.getId());
+        else
+            Database.insert("INSERT INTO bookings (user_id, activity_id, request_message, status) VALUES (?, ?, ?, 'APPROVED')",
+                    userId, groupId, "Joined (open join)");
+        notify(g.getCreatorId(), getUser(userId).getFullName() + " joined \"" + g.getTitle() + "\".", groupId);
+        Toast.show("You joined \"" + g.getTitle() + "\"!");
+    }
+
+    // ----- saved trips (heart) -----
+
+    /** True if the traveler saved this trip with the heart. */
+    public static boolean isSaved(int groupId, int userId) {
+        ensureMapColumns();
+        return Database.exists("SELECT 1 FROM saved_groups WHERE user_id = ? AND activity_id = ?", userId, groupId);
+    }
+
+    /** Heart on / off. Returns true when the trip is now saved. */
+    public static boolean toggleSaved(int groupId, int userId) {
+        ensureMapColumns();
+        if (isSaved(groupId, userId)) {
+            Database.update("DELETE FROM saved_groups WHERE user_id = ? AND activity_id = ?", userId, groupId);
+            return false;
+        }
+        Database.update("INSERT INTO saved_groups (user_id, activity_id) VALUES (?, ?)", userId, groupId);
+        return true;
+    }
+
+    /** The trips this traveler saved, newest saved first (cancelled ones included, so they can be removed). */
+    public static List<TravelGroup> getSavedGroups(int userId) {
+        ensureMapColumns();
+        return Database.list(GROUP_SELECT + "JOIN saved_groups s ON s.activity_id = a.activity_id "
+                + "WHERE s.user_id = ? ORDER BY s.saved_at DESC", Backend::mapGroup, userId);
     }
 
     /** CANCEL a pending request. */
@@ -1924,6 +1987,8 @@ public final class Backend {
         g.setId(rs.getInt("activity_id"));
         g.setCreatorId(rs.getInt("user_id"));
         g.setCreatorName(rs.getString("organizer_name"));
+        try { g.setOpenJoin("OPEN".equalsIgnoreCase(rs.getString("join_mode"))); }
+        catch (SQLException noColumnYet) { g.setOpenJoin(false); }
         g.setTitle(rs.getString("title"));
         g.setCategory(rs.getString("category"));
         g.setDescription(rs.getString("description"));

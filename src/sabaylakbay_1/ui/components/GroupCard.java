@@ -29,18 +29,26 @@ public class GroupCard extends RoundPanel {
             @Override public void mouseClicked(MouseEvent e) { app.openGroup(g.getId()); }
         });
 
-        // ----- photo with category and difficulty -----
+        // ----- photo: category (top left), heart to save (top right), difficulty + "Open join" (bottom left) -----
         Chip category = new Chip(g.getCategory(), new Color(255, 255, 255, 235), Theme.TEXT_DARK);
         Chip difficulty = new Chip(String.valueOf(g.getDifficulty()), new Color(0, 0, 0, 120), Color.WHITE);
+        Chip open = new Chip("Open join", Theme.GREEN, Color.WHITE);
+        open.setToolTipText("Verified travelers join right away, no approval needed");
+        open.setVisible(g.isOpenJoin());
+        HeartButton heart = new HeartButton(g.getId(), 34);
         ImageBox photo = new ImageBox(g.getImagePath(), g.getTitle(), 16, false) {
             @Override public void doLayout() {
-                Dimension c = category.getPreferredSize(), d = difficulty.getPreferredSize();
+                Dimension c = category.getPreferredSize(), d = difficulty.getPreferredSize(), o = open.getPreferredSize();
                 category.setBounds(12, 12, c.width, c.height);
-                difficulty.setBounds(getWidth() - d.width - 12, 12, d.width, d.height);
+                heart.setBounds(getWidth() - 34 - 10, 10, 34, 34);
+                difficulty.setBounds(12, getHeight() - d.height - 12, d.width, d.height);
+                open.setBounds(12 + d.width + 6, getHeight() - o.height - 12, o.width, o.height);
             }
         };
         photo.add(category);
+        photo.add(heart);
         photo.add(difficulty);
+        photo.add(open);
         photo.setPreferredSize(new Dimension(300, 150));
         add(photo, BorderLayout.NORTH);
 
@@ -106,7 +114,7 @@ public class GroupCard extends RoundPanel {
         body.add(meetRow);
         body.add(Theme.gap(16));
 
-        RoundButton btn = new RoundButton("Join");
+        RoundButton btn = new RoundButton(g.isOpenJoin() ? "Join" : "Request to join");
         // BACKEND: Backend.getRequest() reads from MySQL
         JoinRequest req = Backend.getRequest(g.getId(), me);
         if (g.getCreatorId() == me) { btn.setText("Manage"); btn.setStyle(RoundButton.Style.OUTLINE); }

@@ -59,7 +59,8 @@ public class AdminOverviewForm extends Page {
 
         // ----- most visited places + top creators -----
         JPanel row = Theme.clear(new GridLayout(1, 2, 16, 0));
-        BarChart places = new BarChart(Theme.GREEN, "travelers");
+        // click a place to see the trips that went there
+        BarChart places = new BarChart(Theme.GREEN, "travelers").onClick(admin::openTripsTo, "Click a place to see its trips");
         places.setData(Backend.getMostVisitedPlaces(8));              // BACKEND
         row.add(card("Most visited places", "pin", places));
         // BACKEND: Backend.getTopCreators() reads from MySQL
