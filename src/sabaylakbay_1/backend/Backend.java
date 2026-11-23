@@ -561,7 +561,16 @@ public final class Backend {
                 Database.update("UPDATE itinerary SET latitude = ?, longitude = ? "
                         + "WHERE location = ? AND latitude IS NULL", p[1], p[2], p[0]);
         }
-        // old password hashes, for Forgot password (same as database/add-password-history.sql)
+        // security question for Forgot password (same as database/add-security-questions.sql)
+        try {
+            Database.exists("SELECT security_question FROM users LIMIT 1");
+        } catch (RuntimeException missing) {
+            Database.update("ALTER TABLE users ADD COLUMN security_question VARCHAR(150) NULL");
+            Database.update("ALTER TABLE users ADD COLUMN security_answer_hash CHAR(64) NULL");
+            Database.update("UPDATE users SET security_question = 'What city were you born in?', "
+                    + "security_answer_hash = SHA2('manila', 256) WHERE email = 'juan@sabaylakbay.com'");
+        }
+        // old password hashes: "last changed" and no reusing recent passwords (same as database/add-password-history.sql)
         Database.update("CREATE TABLE IF NOT EXISTS password_history ("
                 + "history_id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, password_hash CHAR(64) NOT NULL, "
                 + "changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
@@ -586,43 +595,145 @@ public final class Backend {
         return u;
     }
 
-    // ===== FORGOT PASSWORD =====
-    // Simple reset: the traveler types their email, a RECENT password (the current one or any
-    // password they used before on this account) and a new password. Old passwords are kept only
-    // as SHA-256 hashes in password_history. After 5 wrong tries the email waits 15 minutes.
+    // ===== PASSWORDS AND SECURITY QUESTION =====
+    // Forgot password works the "old school" way: the traveler answers the security question they
+    // picked at sign-up, then chooses a new password. Answers are saved only as SHA-256 hashes
+    // (lowercase, extra spaces removed, so "  Manila " = "manila"). 5 wrong answers lock the email
+    // for 15 minutes.
+
+    /** The questions a traveler can pick from. */
+    public static final String[] SECURITY_QUESTIONS = {
+            "What was the name of your first pet?",
+            "What is your mother's maiden name?",
+            "What city were you born in?",
+            "What was the name of your elementary school?",
+            "What is your favorite food?",
+            "What was your childhood nickname?"};
 
     private static final Map<String, int[]> resetFails = new HashMap<>();       // email -> {fails, lockedUntilMinute}
 
-    public static void resetPassword(String email, String recentPassword, String newPassword) {
+    /** FORGOT PASSWORD step 1: the security question of this account (throws if there is none). */
+    public static String getSecurityQuestion(String email) {
         ensureMapColumns();
         String key = email == null ? "" : email.trim().toLowerCase();
-        long minute = System.currentTimeMillis() / 60000;
-        int[] f = resetFails.getOrDefault(key, new int[]{0, 0});
-        if (f[1] > minute)
-            throw new RuntimeException("Too many wrong tries. Please wait " + (f[1] - minute) + " minutes and try again.");
-        checkNewPassword(newPassword);
-        if (newPassword.equals(recentPassword)) throw new RuntimeException("Choose a new password that's different from the recent one.");
+        checkNotLocked(key);
+        String q = Database.one("SELECT security_question FROM users WHERE email = ? AND account_status <> 'REMOVED'",
+                rs -> rs.getString("security_question"), key);
+        if (q == null || q.isBlank())
+            throw new RuntimeException("We couldn't find a security question for this email. "
+                    + "Check that it's the email you signed up with.");
+        return q;
+    }
 
-        // the current password, or one this account used before
-        User u = Database.one("SELECT * FROM users WHERE email = ? AND (password_hash = SHA2(?, 256) "
-                        + "OR EXISTS (SELECT 1 FROM password_history h WHERE h.user_id = users.user_id AND h.password_hash = SHA2(?, 256)))",
-                Backend::mapUser, key, recentPassword, recentPassword);
+    /** FORGOT PASSWORD step 2: checks the answer and sets the new password. */
+    public static void resetWithSecurityAnswer(String email, String answer, String newPassword) {
+        ensureMapColumns();
+        String key = email == null ? "" : email.trim().toLowerCase();
+        checkNotLocked(key);
+        checkNewPassword(newPassword);
+        User u = Database.one("SELECT * FROM users WHERE email = ? AND security_answer_hash = ?",
+                Backend::mapUser, key, sha256(normalizeAnswer(answer)));
         if (u == null) {
+            int[] f = resetFails.getOrDefault(key, new int[]{0, 0});
             f[0]++;
-            if (f[0] >= 5) { f[0] = 0; f[1] = (int) (minute + 15); }
+            if (f[0] >= 5) { f[0] = 0; f[1] = (int) (System.currentTimeMillis() / 60000 + 15); }
             resetFails.put(key, f);
-            throw new RuntimeException("That email and recent password don't match.");
+            throw new RuntimeException("That answer doesn't match. Check the spelling and try again.");
         }
         if (u.getStatus() == AccountStatus.REMOVED) throw new RuntimeException("This account was removed.");
         if (u.getStatus() == AccountStatus.SUSPENDED)
             throw new RuntimeException("Your account is suspended. Please contact the SabayLakbay team.");
         resetFails.remove(key);
-
-        // keep the old password's hash, then set the new one
-        Database.update("INSERT INTO password_history (user_id, password_hash) SELECT user_id, password_hash FROM users WHERE user_id = ?", u.getId());
-        Database.update("UPDATE users SET password_hash = SHA2(?, 256) WHERE user_id = ?", newPassword, u.getId());
+        setPassword(u.getId(), newPassword);
         notify(u.getId(), "Your password was changed with Forgot password. If this wasn't you, contact the SabayLakbay team.", 0);
         Toast.show("Password changed. You can log in now.");
+    }
+
+    private static void checkNotLocked(String key) {
+        int[] f = resetFails.get(key);
+        long minute = System.currentTimeMillis() / 60000;
+        if (f != null && f[1] > minute)
+            throw new RuntimeException("Too many wrong answers. Please wait " + (f[1] - minute) + " minutes and try again.");
+    }
+
+    /** SETTINGS: change your own password (needs the current one). */
+    public static void changeOwnPassword(String currentPassword, String newPassword) {
+        int me = currentUserId();
+        if (!Database.exists("SELECT 1 FROM users WHERE user_id = ? AND password_hash = SHA2(?, 256)", me, currentPassword))
+            throw new RuntimeException("Your current password isn't right.");
+        checkNewPassword(newPassword);
+        setPassword(me, newPassword);
+        Toast.show("Password changed");
+    }
+
+    /** The logged-in account's security question, or null if none is set yet. */
+    public static String mySecurityQuestion() {
+        ensureMapColumns();
+        return Database.one("SELECT security_question FROM users WHERE user_id = ?", rs -> rs.getString("security_question"), currentUserId());
+    }
+
+    /**
+     * Sets the security question and answer of the logged-in account.
+     * currentPassword is needed to CHANGE an existing one (Settings); not for the first one.
+     */
+    public static void setSecurityQuestion(String question, String answer, String currentPassword) {
+        int me = currentUserId();
+        if (question == null || java.util.Arrays.stream(SECURITY_QUESTIONS).noneMatch(question::equals))
+            throw new RuntimeException("Pick a security question.");
+        String a = normalizeAnswer(answer);
+        if (a.length() < 2) throw new RuntimeException("Type an answer (at least 2 characters).");
+        if (mySecurityQuestion() != null
+                && !Database.exists("SELECT 1 FROM users WHERE user_id = ? AND password_hash = SHA2(?, 256)", me, currentPassword))
+            throw new RuntimeException("Your current password isn't right.");
+        Database.update("UPDATE users SET security_question = ?, security_answer_hash = ? WHERE user_id = ?", question, sha256(a), me);
+        Toast.show("Security question saved");
+    }
+
+    /** When the password was last changed (null if never since sign-up). */
+    public static LocalDateTime passwordChangedAt() {
+        ensureMapColumns();
+        return Database.one("SELECT MAX(changed_at) AS changed_at FROM password_history WHERE user_id = ?",
+                rs -> Database.dateTime(rs, "changed_at"), currentUserId());
+    }
+
+    /** "  Manila  City " -> "manila city", so small typing differences don't matter. */
+    private static String normalizeAnswer(String a) {
+        return a == null ? "" : a.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    /**
+     * Sets a new password: refuses the current one and the last 2 old ones, and keeps the old hash in
+     * password_history (for "last changed" and the no-reuse rule).
+     */
+    private static void setPassword(int userId, String newPassword) {
+        if (isRecentPassword(userId, newPassword))
+            throw new RuntimeException("You used this password recently. Choose a different one.");
+        Database.update("INSERT INTO password_history (user_id, password_hash) SELECT user_id, password_hash FROM users WHERE user_id = ?", userId);
+        Database.update("UPDATE users SET password_hash = SHA2(?, 256) WHERE user_id = ?", newPassword, userId);
+    }
+
+    /** How many old passwords can't be used again. */
+    private static final int RECENT_PASSWORDS = 2;
+
+    /** True if p is the account's current password or one of its last RECENT_PASSWORDS old ones. */
+    private static boolean isRecentPassword(int userId, String p) {
+        if (p == null || p.isEmpty()) return false;
+        if (Database.exists("SELECT 1 FROM users WHERE user_id = ? AND password_hash = SHA2(?, 256)", userId, p)) return true;
+        List<String> old = Database.list("SELECT password_hash FROM password_history WHERE user_id = ? "
+                + "ORDER BY changed_at DESC, history_id DESC LIMIT " + RECENT_PASSWORDS, rs -> rs.getString("password_hash"), userId);
+        String h = sha256(p);
+        for (String o : old) if (o != null && o.equalsIgnoreCase(h)) return true;
+        return false;
+    }
+
+    /** Same as MySQL SHA2(text, 256): lowercase hex. */
+    private static String sha256(String text) {
+        try {
+            byte[] d = java.security.MessageDigest.getInstance("SHA-256").digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder b = new StringBuilder();
+            for (byte x : d) b.append(String.format("%02x", x));
+            return b.toString();
+        } catch (java.security.NoSuchAlgorithmException e) { throw new RuntimeException(e); }
     }
 
     /** Same rules as sign-up: at least 8 characters, a number and an uppercase letter. */

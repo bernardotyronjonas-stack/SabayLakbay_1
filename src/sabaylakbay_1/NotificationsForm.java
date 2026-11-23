@@ -24,10 +24,10 @@ import java.util.List;
 public class NotificationsForm extends Page {
 
     private final JPanel list = new Theme.ScrollableBox(null);
+    private final RoundButton markAll = new RoundButton("Mark all as read", RoundButton.Style.OUTLINE).icon("check").small();
 
     public NotificationsForm(MainDashboard app) {
         super(app);
-        RoundButton markAll = new RoundButton("Mark all as read", RoundButton.Style.OUTLINE).icon("check").small();
         markAll.addActionListener(e -> {
             // BACKEND: Backend.markAllRead() saves to MySQL
             if (Theme.run(this, () -> Backend.markAllRead(Backend.currentUserId()))) { refresh(); app.refreshBadges(); }
@@ -44,7 +44,8 @@ public class NotificationsForm extends Page {
         try {
             // BACKEND: Backend.getNotifications() reads from MySQL
             List<Notification> items = Backend.getNotifications(Backend.currentUserId());
-            if (items.isEmpty()) list.add(empty("bell", "You're all caught up."));
+            if (items.isEmpty()) list.add(empty("bell", "No notifications yet. Updates about your trips will show here."));
+            markAll.setVisible(items.stream().anyMatch(n -> !n.isRead()));   // only when there's something to mark
             for (Notification n : items) {
                 JComponent row = row(n);
                 row.setAlignmentX(LEFT_ALIGNMENT);

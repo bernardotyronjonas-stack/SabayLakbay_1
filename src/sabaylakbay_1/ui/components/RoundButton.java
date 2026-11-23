@@ -92,7 +92,7 @@ public class RoundButton extends JButton {
         if (!isEnabled()) { fill = new Color(0xE5E7EB); stroke = null; }
         if (fill != null) { g2.setColor(fill); g2.fill(r); }
         if (stroke != null) { g2.setColor(stroke); g2.draw(r); }
-        if (isFocusOwner() && isEnabled()) paintFocusRing(g2, fill != null && stroke == null && style != Style.LIGHT && style != Style.GHOST);
+        if (Theme.showFocus(this) && isEnabled()) paintFocusRing(g2, fill != null && stroke == null && style != Style.LIGHT && style != Style.GHOST);
         g2.dispose();
         if (!isEnabled()) setForeground(Theme.HINT); else applyColors();
         super.paintComponent(g);

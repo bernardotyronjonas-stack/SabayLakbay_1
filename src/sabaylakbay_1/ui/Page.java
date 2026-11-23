@@ -65,7 +65,13 @@ public abstract class Page extends JPanel {
         p.add(Theme.gap(14));
         p.add(t);
         p.setAlignmentX(Component.LEFT_ALIGNMENT);
+        fullWidth(p);
         return p;
+    }
+
+    /** Lets an empty message take the full width of a list, so it sits in the middle (not on the left). */
+    private static void fullWidth(JComponent p) {
+        p.setMaximumSize(new Dimension(Integer.MAX_VALUE, p.getPreferredSize().height));
     }
 
     /** Empty message with a button under it, so an empty list always has a next step. */
@@ -76,6 +82,7 @@ public abstract class Page extends JPanel {
         b.setAlignmentX(Component.CENTER_ALIGNMENT);
         p.add(Theme.gap(16));
         p.add(b);
+        fullWidth(p);
         return p;
     }
 }

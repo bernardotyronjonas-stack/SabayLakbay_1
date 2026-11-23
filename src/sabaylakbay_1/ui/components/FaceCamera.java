@@ -14,7 +14,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
 /**
- * Face check with the laptop camera (like the selfie step in other apps).
+ * Camera photo for sign-up: the FACE CHECK (default) or the ID PHOTO (FaceCamera.forId()).
+ * Face check (like the selfie step in other apps):
  * Shows the live camera with an oval guide and tells the traveler what to fix:
  * "Move closer", "Center your face", "Too dark"... When one face is in the oval and well lit
  * for about 2 seconds, the photo is taken by itself (or press Take photo).
@@ -23,12 +24,19 @@ import java.lang.reflect.Method;
  * The photo must come from the live camera (no picking a file), so it can be trusted.
  * If the camera can't start, it says why and shows "Try again".
  *
+ * ID photo: a card-shaped frame, not mirrored (so the text reads right), taken with the button,
+ * and saved cropped to the frame.
+ * Only one camera runs at a time: starting one pauses the other (it shows "Start camera").
+ *
  *   FaceCamera cam = new FaceCamera();   ...   File photo = cam.getPhoto();   (null until taken)
  *   cam.stop() when leaving the screen (also done automatically when it's removed).
  */
 public class FaceCamera extends JPanel {
 
     private static final int GOOD_FRAMES_TO_SHOOT = 20;     // about 2 seconds of a good face
+    private static FaceCamera active;                         // the one using the camera now
+
+    private final boolean idMode;                             // true = ID photo, false = face check
 
     private BufferedImage frame;           // latest camera picture, mirrored (what the traveler sees)
     private BufferedImage rawFrame;        // the same picture not mirrored (what gets saved)
@@ -41,14 +49,22 @@ public class FaceCamera extends JPanel {
     private volatile boolean running;
     private volatile int generation;     // each start() gets a new number, so an old camera loop can't interfere
     private Thread worker;
-    private final RoundButton shoot = new RoundButton("Take photo").icon("check");
+    private final RoundButton shoot;
     private final RoundButton retake = new RoundButton("Retake", RoundButton.Style.OUTLINE);
     private final RoundButton retry = new RoundButton("Try again", RoundButton.Style.OUTLINE).small();
     private final Screen screen = new Screen();
     private Runnable onChange = () -> { };
 
-    public FaceCamera() {
+    /** Face check. */
+    public FaceCamera() { this(false); }
+
+    /** Photo of an ID card (card-shaped frame). */
+    public static FaceCamera forId() { return new FaceCamera(true); }
+
+    private FaceCamera(boolean idMode) {
         super(new BorderLayout(0, 12));
+        this.idMode = idMode;
+        shoot = new RoundButton(idMode ? "Take ID photo" : "Take photo").icon("check");
         setOpaque(false);
         screen.setPreferredSize(new Dimension(560, 340));
         add(screen, BorderLayout.CENTER);
@@ -64,6 +80,7 @@ public class FaceCamera extends JPanel {
         shoot.addActionListener(e -> takePhoto());
         retake.addActionListener(e -> { photo = null; taken = null; retake.setVisible(false); shoot.setVisible(true); start(); onChange.run(); });
         retry.addActionListener(e -> { retry.setVisible(false); Cv.retry(); start(); });
+        if (idMode) hint = "Starting the camera...";
     }
 
     /** The face photo (a JPG file), or null until one is taken. */
@@ -74,9 +91,12 @@ public class FaceCamera extends JPanel {
 
     // ================= camera =================
 
-    /** Starts the camera (safe to call again). */
+    /** Starts the camera (safe to call again). Pauses the other camera box if it was using it. */
     public void start() {
         if (running || photo != null) return;
+        if (active != null && active != this) active.pause("Camera paused. Press Start camera to use it here.");
+        active = this;
+        retry.setVisible(false);
         running = true;
         goodFrames = 0;
         hint = "Starting the camera...";
@@ -89,6 +109,26 @@ public class FaceCamera extends JPanel {
     /** Turns the camera off. */
     public void stop() {
         running = false;
+        if (active == this) active = null;
+    }
+
+    /**
+     * Camera off with a message and a "Start camera" button, e.g. "Take the ID photo first".
+     * Does nothing once a photo is taken.
+     */
+    public void pause(String message) {
+        stop();
+        if (photo != null) return;
+        generation++;                     // the old camera loop ends without changing the screen
+        frame = null;
+        face = null;
+        good = false;
+        goodFrames = 0;
+        hint = message;
+        shoot.setEnabled(false);
+        retry.setText("Start camera");
+        retry.setVisible(true);
+        screen.repaint();
     }
 
     @Override public void removeNotify() { stop(); super.removeNotify(); }
@@ -105,6 +145,7 @@ public class FaceCamera extends JPanel {
                 if (img == null) { Thread.sleep(30); continue; }
                 BufferedImage raw = img;
                 SwingUtilities.invokeLater(() -> rawFrame = raw);
+                if (idMode) { evaluateId(img); Thread.sleep(40); continue; }   // ID: not mirrored, no face search
                 img = mirror(img);
                 Rectangle[] faces = Cv.findFaces(img);
                 evaluate(img, faces);
@@ -147,14 +188,29 @@ public class FaceCamera extends JPanel {
         });
     }
 
+    /** ID photo: checks the light on the card area; the photo is taken with the button. */
+    private void evaluateId(BufferedImage img) {
+        int w = img.getWidth(), h = img.getHeight();
+        int light = brightness(img, new Rectangle((int) (w * 0.2), (int) (h * 0.22), (int) (w * 0.6), (int) (h * 0.5)));
+        String msg;
+        boolean ok = false;
+        if (light < 55) msg = "Too dark. Move closer to a light";
+        else if (light > 230) msg = "Too bright. Tilt the ID to remove glare";
+        else { msg = "Fit the ID in the frame, then Take ID photo"; ok = true; }
+        show(img, null, msg);
+        boolean ready = ok;
+        SwingUtilities.invokeLater(() -> { good = ready; shoot.setEnabled(ready && running); });
+    }
+
     /** The camera can't be used: say why and offer Try again. */
     private void fail(String msg) {
         show(null, null, msg);
-        SwingUtilities.invokeLater(() -> retry.setVisible(true));
+        SwingUtilities.invokeLater(() -> { retry.setText("Try again"); retry.setVisible(true); });
     }
 
     private void show(BufferedImage img, Rectangle f, String msg) {
         SwingUtilities.invokeLater(() -> {
+            if (img != null && !running) return;      // a late frame after the camera was paused or stopped
             if (img != null) frame = img;
             face = f;
             hint = msg;
@@ -168,12 +224,14 @@ public class FaceCamera extends JPanel {
         try {
             File f = File.createTempFile("sabaylakbay-face-", ".jpg");
             f.deleteOnExit();
-            // saved the right way round (not mirrored), so the admin can compare it with the ID
-            ImageIO.write(rawFrame != null ? rawFrame : mirror(frame), "jpg", f);
+            // saved the right way round (not mirrored), so the admin can compare it with the ID;
+            // an ID photo is cut to the card frame so the details are big
+            BufferedImage out = idMode ? cropToGuide(frame) : (rawFrame != null ? rawFrame : mirror(frame));
+            ImageIO.write(out, "jpg", f);
             photo = f;
             taken = frame;
             stop();
-            hint = "Face photo taken";
+            hint = idMode ? "ID photo taken" : "Face photo taken";
             shoot.setVisible(false);
             retake.setVisible(true);
             screen.repaint();
@@ -181,6 +239,34 @@ public class FaceCamera extends JPanel {
         } catch (Exception ex) {
             hint = "Couldn't save the photo. Try again.";
         }
+    }
+
+    /** The part of the picture inside the card frame (with a little margin), as shown on screen. */
+    private BufferedImage cropToGuide(BufferedImage img) {
+        int w = screen.getWidth(), h = screen.getHeight();
+        if (w <= 0 || h <= 0) return img;
+        Rectangle2D g = guide(w, h).getBounds2D();
+        double sc = Math.max((double) w / img.getWidth(), (double) h / img.getHeight());
+        double dx = (w - img.getWidth() * sc) / 2, dy = (h - img.getHeight() * sc) / 2;
+        double mx = g.getWidth() * 0.06, my = g.getHeight() * 0.06;
+        int x = (int) Math.max(0, (g.getX() - mx - dx) / sc), y = (int) Math.max(0, (g.getY() - my - dy) / sc);
+        int x2 = (int) Math.min(img.getWidth(), (g.getMaxX() + mx - dx) / sc), y2 = (int) Math.min(img.getHeight(), (g.getMaxY() + my - dy) / sc);
+        if (x2 - x < 50 || y2 - y < 50) return img;
+        BufferedImage c = new BufferedImage(x2 - x, y2 - y, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2 = c.createGraphics();
+        g2.drawImage(img, -x, -y, null);
+        g2.dispose();
+        return c;
+    }
+
+    /** The frame drawn on the camera picture: an oval for the face, an ID-card shape for the ID. */
+    private Shape guide(int w, int h) {
+        if (idMode) {
+            float gw = Math.min(w * 0.72f, h * 0.70f * 1.586f), gh = gw / 1.586f;   // ID cards are 85.6 x 54 mm
+            return new RoundRectangle2D.Float((w - gw) / 2f, h * 0.45f - gh / 2f, gw, gh, 18, 18);
+        }
+        int ow = (int) (h * 0.62), oh = (int) (h * 0.80);
+        return new Ellipse2D.Float((w - ow) / 2f, h * 0.47f - oh / 2f, ow, oh);
     }
 
     private static BufferedImage mirror(BufferedImage src) {
@@ -218,9 +304,8 @@ public class FaceCamera extends JPanel {
             BufferedImage img = taken != null ? taken : frame;
             if (img != null) ImageBox.drawCover(g2, img, w, h);
 
-            // oval guide (outside the oval is darker)
-            int ow = (int) (h * 0.62), oh = (int) (h * 0.80);
-            Shape oval = new Ellipse2D.Float((w - ow) / 2f, h * 0.47f - oh / 2f, ow, oh);
+            // oval (face) or card (ID) guide; outside it is darker
+            Shape oval = guide(w, h);
             if (taken == null) {
                 Area dark = new Area(new Rectangle(0, 0, w, h));
                 dark.subtract(new Area(oval));
@@ -230,14 +315,14 @@ public class FaceCamera extends JPanel {
                         good ? null : new float[]{10, 8}, 0));
                 g2.setColor(good ? new Color(0x34D399) : new Color(255, 255, 255, 200));
                 g2.draw(oval);
-                if (good && goodFrames > 0) {      // ring fills up while holding still
+                if (!idMode && good && goodFrames > 0) {      // ring fills up while holding still
                     float p = Math.min(1f, goodFrames / (float) GOOD_FRAMES_TO_SHOOT);
                     g2.setStroke(new BasicStroke(6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-                    g2.draw(new Arc2D.Float(((Ellipse2D) oval).getBounds2D(), 90, -360 * p, Arc2D.OPEN));
+                    g2.draw(new Arc2D.Float(oval.getBounds2D(), 90, -360 * p, Arc2D.OPEN));
                 }
             }
             if (img == null) {
-                Icon cam = Icons.get("user", 42, new Color(255, 255, 255, 120));
+                Icon cam = Icons.get(idMode ? "shield" : "user", 42, new Color(255, 255, 255, 120));
                 cam.paintIcon(this, g2, w / 2 - 21, h / 2 - 50);
             }
 

@@ -336,4 +336,20 @@ public final class Theme {
     public static boolean confirm(Component parent, String title, String msg, String okText, boolean danger) {
         return Dialogs.confirm(parent, title, msg, okText, danger);
     }
+
+    // ===== keyboard focus rings =====
+    // Focus rings show only after the keyboard is used (Tab, arrows...), not after mouse clicks,
+    // so clicking a button doesn't leave a ring on it. A mouse click hides them again.
+    private static volatile boolean keyboardMode;
+    static {
+        Toolkit.getDefaultToolkit().addAWTEventListener(e -> {
+            boolean was = keyboardMode;
+            if (e.getID() == java.awt.event.KeyEvent.KEY_PRESSED) keyboardMode = true;
+            else if (e.getID() == java.awt.event.MouseEvent.MOUSE_PRESSED) keyboardMode = false;
+            if (was != keyboardMode) for (Window w : Window.getWindows()) w.repaint();
+        }, AWTEvent.KEY_EVENT_MASK | AWTEvent.MOUSE_EVENT_MASK);
+    }
+
+    /** True when c has focus and the user is using the keyboard: then draw its focus ring. */
+    public static boolean showFocus(Component c) { return keyboardMode && c.isFocusOwner(); }
 }

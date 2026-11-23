@@ -73,10 +73,7 @@ public class Sidebar extends JPanel {
         top.add(Theme.left(menuLabel));
 
         for (String[] m : menu) {
-            NavItem n = new NavItem(m[1], m[2], dark);
-            n.addMouseListener(new MouseAdapter() {
-                @Override public void mouseClicked(MouseEvent e) { onNavigate.accept(m[0]); }
-            });
+            NavItem n = new NavItem(m[1], m[2], dark, () -> onNavigate.accept(m[0]));
             items.put(m[0], n);
             JPanel wrap = Theme.clear(new BorderLayout());
             wrap.setBorder(Theme.pad(0, 16, 4, 16));
@@ -97,6 +94,15 @@ public class Sidebar extends JPanel {
         userRow.addMouseListener(new MouseAdapter() {
             @Override public void mouseClicked(MouseEvent e) { onUserClick.run(); }
         });
+        // keyboard: Tab reaches it, Enter or Space opens it, and a ring shows it has focus
+        Color rowStroke = dark ? null : Theme.BORDER;
+        keyboard(userRow, onUserClick);
+        userRow.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override public void focusGained(java.awt.event.FocusEvent e) {
+                SwingUtilities.invokeLater(() -> { if (Theme.showFocus(userRow)) userRow.setStroke(dark ? Color.WHITE : Theme.GREEN); });
+            }
+            @Override public void focusLost(java.awt.event.FocusEvent e) { userRow.setStroke(rowStroke); }
+        });
         User me = Backend.getCurrentUser();
         userAvatar = new Avatar(me, 36);
         userRow.add(userAvatar, BorderLayout.WEST);
@@ -107,10 +113,25 @@ public class Sidebar extends JPanel {
         userRow.add(Theme.middleLeft(t), BorderLayout.CENTER);
         JLabel icon = new JLabel(Icons.get(userIcon, 17, dark ? Color.WHITE : Theme.TEXT_GRAY));
         icon.setToolTipText("logout".equals(userIcon) ? "Log out" : "Profile");
+        userRow.setToolTipText(icon.getToolTipText());
+        userRow.getAccessibleContext().setAccessibleName(icon.getToolTipText());
         userRow.add(icon, BorderLayout.EAST);
         userRow.setAlignmentX(LEFT_ALIGNMENT);
         bottom.add(userRow);
         add(bottom, BorderLayout.SOUTH);
+    }
+
+    /** Makes a clickable area work with the keyboard: it can get focus, and Enter or Space runs it. */
+    static void keyboard(JComponent c, Runnable action) {
+        c.setFocusable(true);
+        c.getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke("ENTER"), "run");
+        c.getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke("SPACE"), "run");
+        c.getActionMap().put("run", new AbstractAction() {
+            @Override public void actionPerformed(java.awt.event.ActionEvent e) { action.run(); }
+        });
+        c.addMouseListener(new MouseAdapter() {      // clicking also moves focus here, like a button
+            @Override public void mousePressed(MouseEvent e) { c.requestFocusInWindow(); }
+        });
     }
 
     private JComponent divider() {
@@ -145,12 +166,21 @@ public class Sidebar extends JPanel {
         private int badge;
         private final Timer anim;
 
-        NavItem(String text, String icon, boolean dark) {
+        NavItem(String text, String icon, boolean dark, Runnable open) {
             this.text = text;
             this.icon = icon;
             this.dark = dark;
             setPreferredSize(new Dimension(200, 42));
             setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setToolTipText(null);
+            addMouseListener(new MouseAdapter() {
+                @Override public void mouseClicked(MouseEvent e) { open.run(); }
+            });
+            keyboard(this, open);
+            addFocusListener(new java.awt.event.FocusAdapter() {
+                @Override public void focusGained(java.awt.event.FocusEvent e) { repaint(); }
+                @Override public void focusLost(java.awt.event.FocusEvent e) { repaint(); }
+            });
             anim = new Timer(15, e -> {
                 float target = selected ? 1f : hover ? 0.5f : 0f;
                 glow += (target - glow) * 0.25f;
@@ -164,6 +194,14 @@ public class Sidebar extends JPanel {
         }
 
         void setSelected(boolean s) { selected = s; anim.start(); }
+
+        @Override public javax.accessibility.AccessibleContext getAccessibleContext() {
+            if (accessibleContext == null) accessibleContext = new AccessibleJComponent() {
+                @Override public String getAccessibleName() { return text + (badge > 0 ? ", " + badge + " new" : ""); }
+                @Override public javax.accessibility.AccessibleRole getAccessibleRole() { return javax.accessibility.AccessibleRole.PUSH_BUTTON; }
+            };
+            return accessibleContext;
+        }
         void setBadge(int b) { badge = b; repaint(); }
 
         @Override
@@ -188,6 +226,11 @@ public class Sidebar extends JPanel {
             g2.setFont(Theme.font(selected ? Font.BOLD : Theme.MEDIUM, 14));
             FontMetrics fm = g2.getFontMetrics();
             g2.drawString(text, 44, (getHeight() - fm.getHeight()) / 2 + fm.getAscent());
+            if (Theme.showFocus(this)) {        // keyboard focus ring
+                g2.setStroke(new BasicStroke(2f));
+                g2.setColor(dark ? Color.WHITE : Theme.GREEN);
+                g2.draw(new RoundRectangle2D.Float(1, 1, getWidth() - 2, getHeight() - 2, 10, 10));
+            }
             if (badge > 0) {
                 String s = badge > 9 ? "9+" : String.valueOf(badge);
                 g2.setFont(Theme.font(Font.BOLD, 11));

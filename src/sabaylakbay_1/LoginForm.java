@@ -4,6 +4,7 @@ import sabaylakbay_1.backend.Backend;
 import sabaylakbay_1.model.User;
 import sabaylakbay_1.model.UserRole;
 import sabaylakbay_1.ui.AppWindow;
+import sabaylakbay_1.ui.PasswordDialogs;
 import sabaylakbay_1.ui.AuthScreen;
 import sabaylakbay_1.ui.Dialogs;
 import sabaylakbay_1.ui.Theme;
@@ -64,60 +65,24 @@ public class LoginForm extends AuthScreen {
             Theme.error(this, ex.getMessage());
             return;
         }
+        if (user.getRole() != UserRole.ADMIN) {
+            // older accounts without a security question are asked once per login (they can choose Cancel)
+            if (Backend.mySecurityQuestion() == null) PasswordDialogs.securityQuestion(this);   // BACKEND
+        }
         if (user.getRole() == UserRole.ADMIN) AppWindow.show(new AdminDashboard(), "SabayLakbay - Admin");
         else if (Backend.getInterests(user.getId()).isEmpty())
             AppWindow.show(new OnboardingForm(), "SabayLakbay - Get started");   // older account: ask once what they like
         else AppWindow.show(new MainDashboard(), "SabayLakbay");
     }
 
-    /**
-     * FORGOT PASSWORD: email + a recent password (current or one used before) + a new password.
-     * Backend: Backend.resetPassword()
-     */
+    /** FORGOT PASSWORD: email, then the security question + a new password. Backend: see PasswordDialogs. */
     private void forgotPassword() {
-        RoundTextField email = new RoundTextField("you@email.com");
-        email.setText(txtUser.getText().trim());
-        PasswordField recent = new PasswordField("A password you used on this account");
-        PasswordField pass = new PasswordField("At least 8 characters");
-        PasswordField again = new PasswordField("Type it again");
-        JLabel err = Theme.label(" ", Font.PLAIN, 12, Theme.RED);
-
-        JPanel body = Theme.vbox();
-        body.add(formField("Email", email));
-        body.add(formField("Recent password", recent));
-        body.add(formField("New password", pass));
-        body.add(formField("Confirm new password", again));
-        body.add(Theme.left(Theme.label("Use at least 8 characters with a number and an uppercase letter.", Font.PLAIN, 12, Theme.TEXT_GRAY)));
-        body.add(Theme.gap(6));
-        body.add(Theme.left(err));
-        body.setPreferredSize(new Dimension(420, body.getPreferredSize().height));
-
-        boolean changed = Dialogs.form(this, "lock", "Forgot your password?",
-                "Enter a recent password, then choose a new one.", body, "Change password", () -> {
-                    if (!email.getText().contains("@")) { err.setText("Enter the email of your account."); return false; }
-                    if (recent.getValue().isEmpty()) { err.setText("Enter a password you used recently."); return false; }
-                    if (!pass.getValue().equals(again.getValue())) { err.setText("New passwords don't match."); return false; }
-                    try {
-                        Backend.resetPassword(email.getText().trim(), recent.getValue(), pass.getValue());   // BACKEND
-                        return true;
-                    } catch (RuntimeException ex) { err.setText(ex.getMessage()); return false; }
-                });
-        if (changed) {                       // ready to log in with the new password
-            txtUser.setText(email.getText().trim());
+        String email = PasswordDialogs.forgotPassword(this, txtUser.getText());
+        if (email != null) {                 // ready to log in with the new password
+            txtUser.setText(email);
             txtPass.setText("");
             txtPass.requestFocusInWindow();
         }
-    }
-
-    /** Label above an input, for the Forgot password popups. */
-    private static JComponent formField(String label, JComponent input) {
-        JPanel f = Theme.clear(new BorderLayout(0, 5));
-        f.add(Theme.label(label, Font.BOLD, 12, Theme.TEXT_DARK), BorderLayout.NORTH);
-        f.add(input, BorderLayout.CENTER);
-        f.setBorder(Theme.pad(0, 0, 12, 0));
-        f.setAlignmentX(Component.LEFT_ALIGNMENT);
-        f.setMaximumSize(new Dimension(Integer.MAX_VALUE, f.getPreferredSize().height));
-        return f;
     }
 
     public static void main(String[] args) {

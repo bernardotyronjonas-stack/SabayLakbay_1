@@ -7,6 +7,7 @@ import sabaylakbay_1.model.VerificationStatus;
 import sabaylakbay_1.backend.Backend;
 import sabaylakbay_1.ui.Page;
 import sabaylakbay_1.ui.Dialogs;
+import sabaylakbay_1.ui.PasswordDialogs;
 import sabaylakbay_1.ui.Theme;
 import sabaylakbay_1.ui.components.*;
 
@@ -65,7 +66,7 @@ public class ProfileForm extends Page {
         t.add(Theme.left(Theme.label(me.getEmail() + (me.getPhone() == null ? "" : "  \u2022  " + me.getPhone()), Font.PLAIN, 12, Theme.TEXT_GRAY)));
         t.add(Theme.gap(8));
         t.add(Theme.left(Theme.row(6, new StarRating((int) Math.round(avg), 16, false),
-                Theme.label(avg > 0 ? String.format("%.1f from %d reviews", avg, reviews.size()) : "No ratings yet", Font.PLAIN, 12, Theme.TEXT_GRAY))));
+                Theme.label(avg > 0 ? String.format("%.1f from %d %s", avg, reviews.size(), reviews.size() == 1 ? "review" : "reviews") : "No ratings yet", Font.PLAIN, 12, Theme.TEXT_GRAY))));
         JPanel tc = Theme.clear(new GridBagLayout());
         GridBagConstraints gc = new GridBagConstraints();
         gc.weightx = 1; gc.fill = GridBagConstraints.HORIZONTAL;
@@ -89,12 +90,12 @@ public class ProfileForm extends Page {
             idBox.add(new JLabel(sabaylakbay_1.ui.Icons.get("shield", 22, pending ? new Color(0x9A6B00) : Theme.RED)), BorderLayout.WEST);
             JPanel it = Theme.vbox();
             it.add(Theme.left(Theme.label(pending ? "Your ID is being checked" : idStatus == VerificationStatus.REJECTED
-                    ? "Your ID was not approved" : "Upload a valid ID", Font.BOLD, 14, Theme.TEXT_DARK)));
+                    ? "Your ID was not approved" : "Verify your ID", Font.BOLD, 14, Theme.TEXT_DARK)));
             it.add(Theme.left(Theme.label(pending ? "You can join and create trips once an admin approves it."
-                    : "Upload a clear photo of a government ID so you can join and create trips.", Font.PLAIN, 12, Theme.TEXT_GRAY)));
+                    : "Take a photo of a government ID with the camera so you can join and create trips.", Font.PLAIN, 12, Theme.TEXT_GRAY)));
             idBox.add(Theme.middleLeft(it));
             if (!pending) {
-                RoundButton upload = new RoundButton("Upload ID").icon("image").small();
+                RoundButton upload = new RoundButton("Verify ID").icon("shield").small();
                 upload.addActionListener(e -> uploadId(id));
                 JPanel uw = Theme.clear(new GridBagLayout());
                 uw.add(upload);
@@ -117,6 +118,10 @@ public class ProfileForm extends Page {
 
         // ----- interests + home (used for "Picked for you" on Home) -----
         addFull(personalCard(me));
+        box.add(Theme.gap(16));
+
+        // ----- settings: password and security question -----
+        addFull(securityCard());
         box.add(Theme.gap(24));
 
         // ----- trips to review -----
@@ -204,6 +209,57 @@ public class ProfileForm extends Page {
 
         box.revalidate();
         box.repaint();
+    }
+
+    /**
+     * SETTINGS > Account security: change the password, and set or change the security question
+     * used by Forgot password. Backend: passwordChangedAt, mySecurityQuestion (+ PasswordDialogs).
+     */
+    private JComponent securityCard() {
+        RoundPanel p = RoundPanel.card(null);
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBorder(Theme.pad(18, 22, 8, 22));
+        JPanel head = Theme.clear(new BorderLayout());
+        head.add(Theme.iconText("shield", "Account security", Theme.TEXT_DARK), BorderLayout.WEST);
+        ((JLabel) head.getComponent(0)).setFont(Theme.font(Font.BOLD, 15));
+        head.setAlignmentX(LEFT_ALIGNMENT);
+        p.add(head);
+        p.add(Theme.gap(6));
+
+        // BACKEND: Backend.passwordChangedAt() reads from MySQL
+        java.time.LocalDateTime changed = Backend.passwordChangedAt();
+        String pwText = changed == null ? "Not changed since you signed up"
+                : "Last changed " + changed.format(java.time.format.DateTimeFormatter.ofPattern("MMM d, yyyy"));
+        RoundButton changePw = new RoundButton("Change password", RoundButton.Style.OUTLINE).icon("lock").small();
+        changePw.addActionListener(e -> { if (PasswordDialogs.changePassword(this)) refresh(); });
+        p.add(settingRow("Password", pwText, Theme.TEXT_GRAY, changePw, true));
+
+        // BACKEND: Backend.mySecurityQuestion() reads from MySQL
+        String q = Backend.mySecurityQuestion();
+        RoundButton changeQ = new RoundButton(q == null ? "Set up" : "Change question", RoundButton.Style.OUTLINE).icon("shield").small();
+        changeQ.addActionListener(e -> { if (PasswordDialogs.securityQuestion(this)) refresh(); });
+        p.add(settingRow("Security question",
+                q == null ? "Not set yet. Without it you can't use Forgot password." : q,
+                q == null ? Theme.RED : Theme.TEXT_GRAY, changeQ, false));
+        return p;
+    }
+
+    /** One settings line: title + description on the left, a button on the right, a line under it. */
+    private static JComponent settingRow(String title, String text, Color textColor, JComponent button, boolean line) {
+        JPanel r = Theme.clear(new BorderLayout(16, 0));
+        r.setBorder(line ? BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, Theme.BORDER), Theme.pad(12, 0, 12, 0))
+                         : Theme.pad(12, 0, 12, 0));
+        JPanel t = Theme.vbox();
+        t.add(Theme.left(Theme.label(title, Font.BOLD, 13, Theme.TEXT_DARK)));
+        t.add(Theme.gap(3));
+        t.add(Theme.left(Theme.label(text, Font.PLAIN, 12, textColor)));
+        r.add(t, BorderLayout.CENTER);
+        JPanel bw = Theme.clear(new GridBagLayout());
+        bw.add(button);
+        r.add(bw, BorderLayout.EAST);
+        r.setAlignmentX(LEFT_ALIGNMENT);
+        r.setMaximumSize(new Dimension(Integer.MAX_VALUE, r.getPreferredSize().height));
+        return r;
     }
 
     private File chooseImage(String title) {
@@ -368,39 +424,65 @@ public class ProfileForm extends Page {
         catch (Exception e) { return null; }
     }
 
-    /** New ID upload: ID type, photo of the ID and a face check with the camera. */
+    /**
+     * New ID: ID type, then two camera photos in one box (to fit a laptop screen):
+     * step 1 the ID photo, step 2 the face check. No picking files, so the photos can be trusted.
+     */
     private void uploadId(int userId) {
         String[] types = {"Select ID type", "National ID (PhilSys)", "Driver's License", "Passport", "UMID", "SSS ID",
                 "PRC ID", "Postal ID", "Voter's ID", "Other government ID"};
         JComboBox<String> type = new JComboBox<>(types);
         type.setPreferredSize(new Dimension(300, 40));
-        File[] idFile = new File[1];
-        JLabel idName = Theme.label("No photo chosen", Font.PLAIN, 12, Theme.TEXT_GRAY);
-        RoundButton pick = new RoundButton("Choose ID photo", RoundButton.Style.OUTLINE).icon("image").small();
-        pick.addActionListener(e -> {
-            File f = chooseImage("Choose a photo of your valid ID");
-            if (f != null) { idFile[0] = f; idName.setText(f.getName()); idName.setForeground(Theme.GREEN); }
-        });
-        FaceCamera cam = new FaceCamera();
-        cam.setPreferredSize(new Dimension(560, 360));
+
+        FaceCamera idCam = FaceCamera.forId();
+        FaceCamera faceCam = new FaceCamera();
+        CardLayout cards = new CardLayout();
+        JPanel camBox = Theme.clear(cards);
+        camBox.add(idCam, "id");
+        camBox.add(faceCam, "face");
+        camBox.setPreferredSize(new Dimension(540, 330));
+        camBox.setAlignmentX(LEFT_ALIGNMENT);
+
+        JLabel stepTitle = Theme.label(" ", Font.BOLD, 12, Theme.TEXT_DARK);
+        Runnable[] goToId = new Runnable[1];
+        JLabel backToId = Theme.link("Retake ID photo", () -> goToId[0].run());
+        Runnable showId = () -> {
+            stepTitle.setText("Step 1 of 2: Photo of your ID");
+            backToId.setVisible(false);
+            cards.show(camBox, "id");
+            idCam.start();
+        };
+        Runnable showFace = () -> {
+            stepTitle.setText("Step 2 of 2: Face check");
+            backToId.setVisible(true);
+            cards.show(camBox, "face");
+            faceCam.start();
+        };
+        goToId[0] = showId;
+        idCam.onChange(() -> { if (idCam.getPhoto() != null) showFace.run(); });
+
+        JPanel stepRow = Theme.clear(new BorderLayout());
+        stepRow.add(stepTitle, BorderLayout.WEST);
+        stepRow.add(backToId, BorderLayout.EAST);
+        stepRow.setAlignmentX(LEFT_ALIGNMENT);
+        stepRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 22));
+
         JPanel p = Theme.vbox();
         p.add(Theme.left(Theme.label("ID type", Font.BOLD, 12, Theme.TEXT_DARK)));
         p.add(Theme.gap(5));
         p.add(Theme.left(type));
-        p.add(Theme.gap(12));
-        p.add(Theme.left(Theme.row(10, pick, idName)));
         p.add(Theme.gap(14));
-        p.add(Theme.left(Theme.label("Face check", Font.BOLD, 12, Theme.TEXT_DARK)));
-        p.add(Theme.gap(5));
-        cam.setAlignmentX(LEFT_ALIGNMENT);
-        p.add(cam);
-        cam.start();
-        boolean ok = Dialogs.form(this, "shield", "Upload your ID", "An admin compares your face photo with the ID.", p, "Send for checking",
-                () -> type.getSelectedIndex() > 0 && idFile[0] != null && cam.getPhoto() != null);
-        cam.stop();
+        p.add(stepRow);
+        p.add(Theme.gap(6));
+        p.add(camBox);
+        showId.run();
+        boolean ok = Dialogs.form(this, "shield", "Send your ID again", "An admin compares your face photo with the ID.", p, "Send for checking",
+                () -> type.getSelectedIndex() > 0 && idCam.getPhoto() != null && faceCam.getPhoto() != null);
+        idCam.stop();
+        faceCam.stop();
         if (!ok) return;
         // BACKEND: Backend.resubmitId() saves to MySQL
-        if (Theme.run(this, () -> Backend.resubmitId(userId, (String) type.getSelectedItem(), idFile[0], cam.getPhoto()))) refresh();
+        if (Theme.run(this, () -> Backend.resubmitId(userId, (String) type.getSelectedItem(), idCam.getPhoto(), faceCam.getPhoto()))) refresh();
     }
 
     private static JComponent stat(String value, String label) {

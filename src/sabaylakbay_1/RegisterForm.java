@@ -51,6 +51,10 @@ public class RegisterForm extends JPanel {
     private final RoundTextField email = new RoundTextField("you@email.com");
     private final PasswordField pass = new PasswordField("Create a password");
     private final PasswordField confirm = new PasswordField("Type it again");
+    // security question: asked in Forgot password
+    private final JComboBox<String> secQuestion = sabaylakbay_1.ui.PasswordDialogs.questionBox();
+    private final RoundTextField secAnswer = new RoundTextField("Your answer (capital letters don't matter)");
+    private final JLabel errSecurity = err();
     private final Strength strength = new Strength();
     private final JLabel ruleLen = rule("At least 8 characters");
     private final JLabel ruleNum = rule("Has a number");
@@ -69,7 +73,7 @@ public class RegisterForm extends JPanel {
     private final AvatarPicker avatar = new AvatarPicker();
     // step 3
     private final JComboBox<String> idType = new JComboBox<>(ID_TYPES);
-    private final IdDrop idDrop = new IdDrop();
+    private final FaceCamera idCam = FaceCamera.forId();     // the ID photo is taken with the camera too
     private final FaceCamera faceCam = new FaceCamera();
     // step 4 + 5
     private final InterestPicker interests = new InterestPicker(Backend.INTERESTS, 3);
@@ -171,6 +175,10 @@ public class RegisterForm extends JPanel {
         meter.setBorder(new EmptyBorder(0, 0, 16, 0));
         p.add(fullWidth(meter));
         p.add(field("Confirm password", confirm, errConfirm, null));
+        secQuestion.setPreferredSize(new Dimension(400, 44));
+        p.add(field("Security question", secQuestion, null, null));
+        p.add(field("Answer", secAnswer, errSecurity,
+                "If you forget your password, you'll answer this to reset it. Pick something only you know."));
         return top(p);
     }
 
@@ -242,9 +250,16 @@ public class RegisterForm extends JPanel {
         JPanel p = form();
         idType.setPreferredSize(new Dimension(400, 44));
         p.add(field("ID type", idType, null, null));
-        idDrop.setPreferredSize(new Dimension(560, 170));
-        p.add(field("Photo of your ID", idDrop, errId, null));
+        idCam.setPreferredSize(new Dimension(560, 360));
+        // one camera at a time: the face check starts by itself once the ID photo is taken
+        idCam.onChange(() -> {
+            errId.setText(" ");
+            if (idCam.getPhoto() != null && faceCam.getPhoto() == null) faceCam.start();
+        });
+        p.add(field("Photo of your ID", idCam, errId,
+                "Hold the ID up to the camera inside the frame. All four corners, no glare."));
         faceCam.onChange(() -> errFace.setText(" "));
+        faceCam.pause("Take the ID photo first");
         p.add(field("Face check", faceCam, errFace,
                 "Look at the camera inside the oval. An admin compares the photo with your ID."));
 
@@ -333,7 +348,11 @@ public class RegisterForm extends JPanel {
         subtitle.setText(text[s - 1][1]);
         back.setVisible(s > 1);
         if (scroll != null) SwingUtilities.invokeLater(() -> scroll.getVerticalScrollBar().setValue(0));   // start at the top
-        if (s == 3) faceCam.start(); else faceCam.stop();    // camera is on only during the ID step
+        // the camera is on only during the ID step, for whichever photo is still missing
+        if (s == 3) {
+            if (idCam.getPhoto() == null) idCam.start();
+            else if (faceCam.getPhoto() == null) faceCam.start();
+        } else { idCam.stop(); faceCam.stop(); }
         next.setText(s == STEPS.length ? "Create account" : "Continue");
         if (s == 2) SwingUtilities.invokeLater(name::requestFocusInWindow);
         revalidate();
@@ -361,6 +380,8 @@ public class RegisterForm extends JPanel {
             String p = pass.getValue();
             if (score(p) < 3) { errPass.setText("Use at least 8 characters with a number and an uppercase letter."); ok = false; }
             if (!p.equals(confirm.getValue()) || confirm.getValue().isEmpty()) { errConfirm.setText("Passwords don't match."); ok = false; }
+            if (secQuestion.getSelectedIndex() <= 0) { errSecurity.setText("Pick a security question and type the answer."); ok = false; }
+            else if (secAnswer.getText().trim().length() < 2) { errSecurity.setText("Type the answer to your security question."); ok = false; }
         } else if (s == 2) {
             if (name.getText().trim().split("\\s+").length < 2) { errName.setText("Enter your first and last name."); ok = false; }
             if (phoneDigits(phone.getText()) == null) { errPhone.setText("Enter a 10-digit mobile number starting with 9, like 917 123 4567."); ok = false; }
@@ -369,8 +390,8 @@ public class RegisterForm extends JPanel {
             else if (Period.between(b, LocalDate.now()).getYears() < 18) { errBirth.setText("You must be at least 18 to join."); ok = false; }
             if (!emPhone.getText().isBlank() && phoneDigits(emPhone.getText()) == null) { errEmPhone.setText("Check the emergency contact's number."); ok = false; }
         } else if (s == 3) {
-            if (idType.getSelectedIndex() == 0 || idDrop.file == null) {
-                errId.setText(idType.getSelectedIndex() == 0 ? "Choose the type of ID first." : "Upload a photo of your ID.");
+            if (idType.getSelectedIndex() == 0 || idCam.getPhoto() == null) {
+                errId.setText(idType.getSelectedIndex() == 0 ? "Choose the type of ID first." : "Take a photo of your ID with the camera.");
                 ok = false;
             }
             if (faceCam.getPhoto() == null) { errFace.setText("Take the face photo with the camera to continue."); ok = false; }
@@ -398,13 +419,20 @@ public class RegisterForm extends JPanel {
         next.setText("Creating account...");
         try {
             // BACKEND: saves the account, ID, photo, interests and location, then logs in
-            Backend.register(u, password, idDrop.file, (String) idType.getSelectedItem(), faceCam.getPhoto(), avatar.file, interests.getSelected());
+            Backend.register(u, password, idCam.getPhoto(), (String) idType.getSelectedItem(), faceCam.getPhoto(), avatar.file, interests.getSelected());
             Backend.login(u.getEmail(), password);
         } catch (RuntimeException ex) {
             next.setEnabled(true);
             next.setText("Create account");
             Theme.error(this, ex.getMessage());
             return;
+        }
+        try {
+            // BACKEND: saves the security question (answer stored as a hash)
+            Backend.setSecurityQuestion((String) secQuestion.getSelectedItem(), secAnswer.getText(), null);
+        } catch (RuntimeException ex) {
+            // the account exists; if this fails they're simply asked for a question at their next login
+            System.err.println("Security question not saved: " + ex.getMessage());
         }
         AppWindow.show(new MainDashboard(), "SabayLakbay");
         Toast.show("Welcome to SabayLakbay, " + u.getFullName().split(" ")[0] + "! We're checking your ID.");
@@ -423,6 +451,8 @@ public class RegisterForm extends JPanel {
             mark(ruleUpper, p.matches(".*[A-Z].*"));
         });
         onType(confirm, () -> errConfirm.setText(" "));
+        onType(secAnswer, () -> errSecurity.setText(" "));
+        secQuestion.addActionListener(e -> errSecurity.setText(" "));
         onType(name, () -> errName.setText(" "));
         onType(phone, () -> errPhone.setText(" "));
         onType(emPhone, () -> errEmPhone.setText(" "));
@@ -629,7 +659,7 @@ public class RegisterForm extends JPanel {
                     g2.setStroke(new BasicStroke(2.2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
                     g2.draw(c);
                 } else {
-                    g2.setColor(now ? Color.WHITE : new Color(255, 255, 255, 90));
+                    g2.setColor(now ? Color.WHITE : new Color(255, 255, 255, 150));    // circle: 3:1 or more
                     g2.setStroke(new BasicStroke(2f));
                     g2.drawOval(2, y + 3, 26, 26);
                     g2.setFont(Theme.font(Font.BOLD, 12));
@@ -638,10 +668,10 @@ public class RegisterForm extends JPanel {
                     g2.drawString(s, 15 - fm.stringWidth(s) / 2, y + 16 + fm.getAscent() / 2 - 1);
                 }
                 g2.setFont(Theme.font(Font.BOLD, 14));
-                g2.setColor(now || done ? Color.WHITE : new Color(255, 255, 255, 140));
+                g2.setColor(now || done ? Color.WHITE : new Color(255, 255, 255, 215));   // readable (4.5:1 or more)
                 g2.drawString(STEPS[i][0], 44, y + 15);
                 g2.setFont(Theme.font(Font.PLAIN, 12));
-                g2.setColor(new Color(255, 255, 255, now ? 200 : 110));
+                g2.setColor(new Color(255, 255, 255, now ? 225 : 200));
                 g2.drawString(STEPS[i][1], 44, y + 33);
             }
             g2.dispose();
@@ -701,69 +731,6 @@ public class RegisterForm extends JPanel {
             g2.setColor(Theme.GREEN);
             g2.fillOval(s - 24, s - 24, 24, 24);
             Icons.get("plus", 14, Color.WHITE).paintIcon(this, g2, s - 19, s - 19);
-            g2.dispose();
-        }
-    }
-
-    /** Dashed upload box for the ID photo; shows a preview once chosen. */
-    private final class IdDrop extends JComponent {
-        File file;
-        private boolean hover;
-        IdDrop() {
-            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-            addMouseListener(new MouseAdapter() {
-                @Override public void mouseClicked(MouseEvent e) {
-                    File f = Dialogs.chooseImage(RegisterForm.this, "Choose a photo of your ID");
-                    if (f != null) { file = f; errId.setText(" "); repaint(); }
-                }
-                @Override public void mouseEntered(MouseEvent e) { hover = true; repaint(); }
-                @Override public void mouseExited(MouseEvent e) { hover = false; repaint(); }
-            });
-        }
-        @Override protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            Theme.aa(g2);
-            int w = getWidth(), h = getHeight();
-            RoundRectangle2D box = new RoundRectangle2D.Float(1, 1, w - 3, h - 3, 16, 16);
-            g2.setColor(hover ? new Color(0xF4FAF7) : new Color(0xFCFCFD));
-            g2.fill(box);
-            g2.setColor(hover || file != null ? Theme.GREEN : new Color(0xC9D3DB));
-            g2.setStroke(new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1f, new float[]{7, 6}, 0));
-            g2.draw(box);
-            g2.setStroke(new BasicStroke(1f));
-            BufferedImage img = file == null ? null : ImageBox.load(file.getAbsolutePath());
-            if (img != null) {
-                int ph = h - 40, pw = Math.min(w / 2, (int) (ph * 1.58));
-                Shape clip = new RoundRectangle2D.Float(20, 20, pw, ph, 12, 12);
-                Shape old = g2.getClip();
-                g2.clip(clip);
-                g2.translate(20, 20);
-                ImageBox.drawCover(g2, img, pw, ph);
-                g2.translate(-20, -20);
-                g2.setClip(old);
-                int tx = 40 + pw;
-                g2.setFont(Theme.font(Font.BOLD, 14));
-                g2.setColor(Theme.TEXT_DARK);
-                g2.drawString(file.getName().length() > 30 ? file.getName().substring(0, 28) + "\u2026" : file.getName(), tx, h / 2 - 8);
-                g2.setFont(Theme.font(Font.PLAIN, 12));
-                g2.setColor(Theme.GREEN);
-                g2.drawString("Ready to upload", tx, h / 2 + 12);
-                g2.setColor(Theme.LINK);
-                g2.drawString("Click to change", tx, h / 2 + 32);
-            } else {
-                g2.setColor(Theme.GREEN_LIGHT);
-                g2.fillOval(w / 2 - 26, h / 2 - 54, 52, 52);
-                Icons.get("image", 24, Theme.GREEN).paintIcon(this, g2, w / 2 - 12, h / 2 - 40);
-                String a = "Click to upload a photo of your ID", b = "JPG or PNG";
-                g2.setFont(Theme.font(Font.BOLD, 14));
-                FontMetrics fm = g2.getFontMetrics();
-                g2.setColor(Theme.TEXT_DARK);
-                g2.drawString(a, (w - fm.stringWidth(a)) / 2, h / 2 + 24);
-                g2.setFont(Theme.font(Font.PLAIN, 12));
-                fm = g2.getFontMetrics();
-                g2.setColor(Theme.TEXT_GRAY);
-                g2.drawString(b, (w - fm.stringWidth(b)) / 2, h / 2 + 44);
-            }
             g2.dispose();
         }
     }
