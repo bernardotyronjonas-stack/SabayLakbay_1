@@ -1,6 +1,5 @@
 package sabaylakbay_1.ui.components;
 
-import sabaylakbay_1.ui.Dialogs;
 import sabaylakbay_1.ui.Icons;
 import sabaylakbay_1.ui.Theme;
 
@@ -21,7 +20,8 @@ import java.lang.reflect.Method;
  * for about 2 seconds, the photo is taken by itself (or press Take photo).
  *
  * Uses OpenCV (free). Setup: see "HOW TO SET UP MYSQL.txt" > FACE CHECK.
- * If OpenCV or the camera isn't available, it offers "Upload a photo instead", so sign-up still works.
+ * The photo must come from the live camera (no picking a file), so it can be trusted.
+ * If the camera can't start, it says why and shows "Try again".
  *
  *   FaceCamera cam = new FaceCamera();   ...   File photo = cam.getPhoto();   (null until taken)
  *   cam.stop() when leaving the screen (also done automatically when it's removed).
@@ -30,7 +30,8 @@ public class FaceCamera extends JPanel {
 
     private static final int GOOD_FRAMES_TO_SHOOT = 20;     // about 2 seconds of a good face
 
-    private BufferedImage frame;           // latest camera picture (already mirrored)
+    private BufferedImage frame;           // latest camera picture, mirrored (what the traveler sees)
+    private BufferedImage rawFrame;        // the same picture not mirrored (what gets saved)
     private Rectangle face;                // face found in the frame (frame coordinates)
     private String hint = "Starting the camera...";
     private boolean good;
@@ -42,7 +43,7 @@ public class FaceCamera extends JPanel {
     private Thread worker;
     private final RoundButton shoot = new RoundButton("Take photo").icon("check");
     private final RoundButton retake = new RoundButton("Retake", RoundButton.Style.OUTLINE);
-    private final RoundButton upload = new RoundButton("Upload a photo instead", RoundButton.Style.GHOST).icon("image").small();
+    private final RoundButton retry = new RoundButton("Try again", RoundButton.Style.OUTLINE).small();
     private final Screen screen = new Screen();
     private Runnable onChange = () -> { };
 
@@ -53,21 +54,22 @@ public class FaceCamera extends JPanel {
         add(screen, BorderLayout.CENTER);
         JPanel bar = new JPanel(new BorderLayout());
         bar.setOpaque(false);
-        bar.add(upload, BorderLayout.WEST);
+        bar.add(retry, BorderLayout.WEST);
         JPanel right = Theme.row(10, retake, shoot);
         bar.add(right, BorderLayout.EAST);
         add(bar, BorderLayout.SOUTH);
         shoot.setEnabled(false);
         retake.setVisible(false);
+        retry.setVisible(false);
         shoot.addActionListener(e -> takePhoto());
         retake.addActionListener(e -> { photo = null; taken = null; retake.setVisible(false); shoot.setVisible(true); start(); onChange.run(); });
-        upload.addActionListener(e -> uploadInstead());
+        retry.addActionListener(e -> { retry.setVisible(false); Cv.retry(); start(); });
     }
 
-    /** The face photo (a JPG file), or null until one is taken / uploaded. */
+    /** The face photo (a JPG file), or null until one is taken. */
     public File getPhoto() { return photo; }
 
-    /** Runs when a photo is taken, uploaded or cleared. */
+    /** Runs when a photo is taken or cleared. */
     public void onChange(Runnable r) { onChange = r; }
 
     // ================= camera =================
@@ -94,20 +96,22 @@ public class FaceCamera extends JPanel {
     private void loop(int my) {
         Object cap = null;
         try {
-            if (!Cv.load()) { show(null, null, Cv.problem); return; }
+            if (!Cv.load()) { fail(Cv.problem); return; }
             cap = Cv.openCamera();
-            if (cap == null) { show(null, null, "No camera found. Check that it isn't used by another app, or upload a photo."); return; }
+            if (cap == null) { fail("No camera found. Close other apps using it, then Try again."); return; }
             Object mat = Cv.newMat();
             while (running && generation == my) {
                 BufferedImage img = Cv.read(cap, mat);
                 if (img == null) { Thread.sleep(30); continue; }
+                BufferedImage raw = img;
+                SwingUtilities.invokeLater(() -> rawFrame = raw);
                 img = mirror(img);
                 Rectangle[] faces = Cv.findFaces(img);
                 evaluate(img, faces);
                 Thread.sleep(40);
             }
         } catch (Throwable ex) {
-            show(null, null, "The camera stopped: " + ex.getClass().getSimpleName() + ". You can upload a photo instead.");
+            fail("The camera stopped (" + ex.getClass().getSimpleName() + "). Press Try again.");
         } finally {
             Cv.release(cap);
             if (generation == my) running = false;
@@ -143,6 +147,12 @@ public class FaceCamera extends JPanel {
         });
     }
 
+    /** The camera can't be used: say why and offer Try again. */
+    private void fail(String msg) {
+        show(null, null, msg);
+        SwingUtilities.invokeLater(() -> retry.setVisible(true));
+    }
+
     private void show(BufferedImage img, Rectangle f, String msg) {
         SwingUtilities.invokeLater(() -> {
             if (img != null) frame = img;
@@ -158,7 +168,8 @@ public class FaceCamera extends JPanel {
         try {
             File f = File.createTempFile("sabaylakbay-face-", ".jpg");
             f.deleteOnExit();
-            ImageIO.write(frame, "jpg", f);
+            // saved the right way round (not mirrored), so the admin can compare it with the ID
+            ImageIO.write(rawFrame != null ? rawFrame : mirror(frame), "jpg", f);
             photo = f;
             taken = frame;
             stop();
@@ -170,19 +181,6 @@ public class FaceCamera extends JPanel {
         } catch (Exception ex) {
             hint = "Couldn't save the photo. Try again.";
         }
-    }
-
-    private void uploadInstead() {
-        File f = Dialogs.chooseImage(this, "Choose a clear photo of your face");
-        if (f == null) return;
-        stop();
-        photo = f;
-        taken = ImageBox.load(f.getAbsolutePath());
-        hint = "Face photo added";
-        shoot.setVisible(false);
-        retake.setVisible(true);
-        screen.repaint();
-        onChange.run();
     }
 
     private static BufferedImage mirror(BufferedImage src) {
@@ -269,14 +267,17 @@ public class FaceCamera extends JPanel {
 
     /**
      * Talks to OpenCV without needing it to build the project: if the OpenCV jar isn't in Libraries,
-     * the app still runs and the face step offers "Upload a photo instead".
+     * the app still runs and the face step explains how to set the camera up.
      * It looks for the OpenCV files in the project's lib/opencv folder and in C:\opencv\build.
      */
     static final class Cv {
-        static String problem = "The camera isn't set up on this computer yet. You can upload a photo instead.";
+        static String problem = "The camera isn't set up on this computer yet (OpenCV, see the setup guide).";
         private static boolean loaded, tried;
         private static Object classifier;
         private static Class<?> matC, sizeC, matOfRectC, imgproc, rectC;
+
+        /** Lets load() try again (e.g. after the OpenCV files were added). */
+        static synchronized void retry() { if (!loaded) tried = false; }
 
         static synchronized boolean load() {
             if (tried) return loaded;
@@ -290,7 +291,7 @@ public class FaceCamera extends JPanel {
                 else System.loadLibrary(lib);
                 File xml = find("haarcascade_frontalface_default.xml");
                 if (xml == null) {
-                    problem = "Face guide file not found (haarcascade_frontalface_default.xml). You can upload a photo instead.";
+                    problem = "Face guide file missing (haarcascade_frontalface_default.xml), see the setup guide.";
                     return false;
                 }
                 matC = Class.forName("org.opencv.core.Mat");
@@ -301,14 +302,14 @@ public class FaceCamera extends JPanel {
                 classifier = Class.forName("org.opencv.objdetect.CascadeClassifier").getConstructor(String.class)
                         .newInstance(xml.getAbsolutePath());
                 if ((Boolean) classifier.getClass().getMethod("empty").invoke(classifier)) {
-                    problem = "The face guide file couldn't be read. You can upload a photo instead.";
+                    problem = "The face guide file couldn't be read. See the setup guide.";
                     return false;
                 }
                 loaded = true;
             } catch (ClassNotFoundException e) {
-                problem = "OpenCV isn't added to the project yet. You can upload a photo instead.";
+                problem = "OpenCV isn't added to the project yet. See the setup guide.";
             } catch (Throwable e) {
-                problem = "OpenCV couldn't start (" + e.getClass().getSimpleName() + "). You can upload a photo instead.";
+                problem = "OpenCV couldn't start (" + e.getClass().getSimpleName() + "). See the setup guide.";
             }
             return loaded;
         }

@@ -561,6 +561,11 @@ public final class Backend {
                 Database.update("UPDATE itinerary SET latitude = ?, longitude = ? "
                         + "WHERE location = ? AND latitude IS NULL", p[1], p[2], p[0]);
         }
+        // old password hashes, for Forgot password (same as database/add-password-history.sql)
+        Database.update("CREATE TABLE IF NOT EXISTS password_history ("
+                + "history_id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, password_hash CHAR(64) NOT NULL, "
+                + "changed_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                + "FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE)");
         // admin activity log (same as database/add-admin-tools.sql)
         Database.update("CREATE TABLE IF NOT EXISTS admin_logs ("
                 + "log_id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NULL, action VARCHAR(40) NOT NULL, "
@@ -581,9 +586,49 @@ public final class Backend {
         return u;
     }
 
-    /** FORGOT PASSWORD. Sending emails needs a mail server, so for now the user is told to contact the admin. */
-    public static void sendPasswordReset(String email) {
-        Toast.show("Password reset by email isn't available yet. Please contact the admin.");
+    // ===== FORGOT PASSWORD =====
+    // Simple reset: the traveler types their email, a RECENT password (the current one or any
+    // password they used before on this account) and a new password. Old passwords are kept only
+    // as SHA-256 hashes in password_history. After 5 wrong tries the email waits 15 minutes.
+
+    private static final Map<String, int[]> resetFails = new HashMap<>();       // email -> {fails, lockedUntilMinute}
+
+    public static void resetPassword(String email, String recentPassword, String newPassword) {
+        ensureMapColumns();
+        String key = email == null ? "" : email.trim().toLowerCase();
+        long minute = System.currentTimeMillis() / 60000;
+        int[] f = resetFails.getOrDefault(key, new int[]{0, 0});
+        if (f[1] > minute)
+            throw new RuntimeException("Too many wrong tries. Please wait " + (f[1] - minute) + " minutes and try again.");
+        checkNewPassword(newPassword);
+        if (newPassword.equals(recentPassword)) throw new RuntimeException("Choose a new password that's different from the recent one.");
+
+        // the current password, or one this account used before
+        User u = Database.one("SELECT * FROM users WHERE email = ? AND (password_hash = SHA2(?, 256) "
+                        + "OR EXISTS (SELECT 1 FROM password_history h WHERE h.user_id = users.user_id AND h.password_hash = SHA2(?, 256)))",
+                Backend::mapUser, key, recentPassword, recentPassword);
+        if (u == null) {
+            f[0]++;
+            if (f[0] >= 5) { f[0] = 0; f[1] = (int) (minute + 15); }
+            resetFails.put(key, f);
+            throw new RuntimeException("That email and recent password don't match.");
+        }
+        if (u.getStatus() == AccountStatus.REMOVED) throw new RuntimeException("This account was removed.");
+        if (u.getStatus() == AccountStatus.SUSPENDED)
+            throw new RuntimeException("Your account is suspended. Please contact the SabayLakbay team.");
+        resetFails.remove(key);
+
+        // keep the old password's hash, then set the new one
+        Database.update("INSERT INTO password_history (user_id, password_hash) SELECT user_id, password_hash FROM users WHERE user_id = ?", u.getId());
+        Database.update("UPDATE users SET password_hash = SHA2(?, 256) WHERE user_id = ?", newPassword, u.getId());
+        notify(u.getId(), "Your password was changed with Forgot password. If this wasn't you, contact the SabayLakbay team.", 0);
+        Toast.show("Password changed. You can log in now.");
+    }
+
+    /** Same rules as sign-up: at least 8 characters, a number and an uppercase letter. */
+    private static void checkNewPassword(String p) {
+        if (p == null || p.length() < 8 || !p.matches(".*\\d.*") || !p.matches(".*[A-Z].*"))
+            throw new RuntimeException("Use at least 8 characters with a number and an uppercase letter.");
     }
 
     public static void logout() {

@@ -373,7 +373,7 @@ public class RegisterForm extends JPanel {
                 errId.setText(idType.getSelectedIndex() == 0 ? "Choose the type of ID first." : "Upload a photo of your ID.");
                 ok = false;
             }
-            if (faceCam.getPhoto() == null) { errFace.setText("Take the face photo (or upload one) to continue."); ok = false; }
+            if (faceCam.getPhoto() == null) { errFace.setText("Take the face photo with the camera to continue."); ok = false; }
         } else if (s == 4) {
             if (interests.getSelected().isEmpty()) { errInterests.setText("Pick at least one."); ok = false; }
         } else if (s == 5) {

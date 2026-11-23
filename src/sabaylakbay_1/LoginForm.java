@@ -12,6 +12,7 @@ import sabaylakbay_1.ui.components.RoundButton;
 import sabaylakbay_1.ui.components.RoundTextField;
 
 import javax.swing.*;
+import java.awt.*;
 
 /**
  * LOGIN FORM. The app starts here: run this file.
@@ -69,10 +70,54 @@ public class LoginForm extends AuthScreen {
         else AppWindow.show(new MainDashboard(), "SabayLakbay");
     }
 
+    /**
+     * FORGOT PASSWORD: email + a recent password (current or one used before) + a new password.
+     * Backend: Backend.resetPassword()
+     */
     private void forgotPassword() {
-        // There is no reset by email yet, so say so up front instead of asking for an email first.
-        Dialogs.message(this, Dialogs.Kind.INFO, "Forgot your password?",
-                "Resetting a password by email isn't available yet. Please contact a SabayLakbay admin to get back into your account.");
+        RoundTextField email = new RoundTextField("you@email.com");
+        email.setText(txtUser.getText().trim());
+        PasswordField recent = new PasswordField("A password you used on this account");
+        PasswordField pass = new PasswordField("At least 8 characters");
+        PasswordField again = new PasswordField("Type it again");
+        JLabel err = Theme.label(" ", Font.PLAIN, 12, Theme.RED);
+
+        JPanel body = Theme.vbox();
+        body.add(formField("Email", email));
+        body.add(formField("Recent password", recent));
+        body.add(formField("New password", pass));
+        body.add(formField("Confirm new password", again));
+        body.add(Theme.left(Theme.label("Use at least 8 characters with a number and an uppercase letter.", Font.PLAIN, 12, Theme.TEXT_GRAY)));
+        body.add(Theme.gap(6));
+        body.add(Theme.left(err));
+        body.setPreferredSize(new Dimension(420, body.getPreferredSize().height));
+
+        boolean changed = Dialogs.form(this, "lock", "Forgot your password?",
+                "Enter a recent password, then choose a new one.", body, "Change password", () -> {
+                    if (!email.getText().contains("@")) { err.setText("Enter the email of your account."); return false; }
+                    if (recent.getValue().isEmpty()) { err.setText("Enter a password you used recently."); return false; }
+                    if (!pass.getValue().equals(again.getValue())) { err.setText("New passwords don't match."); return false; }
+                    try {
+                        Backend.resetPassword(email.getText().trim(), recent.getValue(), pass.getValue());   // BACKEND
+                        return true;
+                    } catch (RuntimeException ex) { err.setText(ex.getMessage()); return false; }
+                });
+        if (changed) {                       // ready to log in with the new password
+            txtUser.setText(email.getText().trim());
+            txtPass.setText("");
+            txtPass.requestFocusInWindow();
+        }
+    }
+
+    /** Label above an input, for the Forgot password popups. */
+    private static JComponent formField(String label, JComponent input) {
+        JPanel f = Theme.clear(new BorderLayout(0, 5));
+        f.add(Theme.label(label, Font.BOLD, 12, Theme.TEXT_DARK), BorderLayout.NORTH);
+        f.add(input, BorderLayout.CENTER);
+        f.setBorder(Theme.pad(0, 0, 12, 0));
+        f.setAlignmentX(Component.LEFT_ALIGNMENT);
+        f.setMaximumSize(new Dimension(Integer.MAX_VALUE, f.getPreferredSize().height));
+        return f;
     }
 
     public static void main(String[] args) {
