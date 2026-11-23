@@ -1,35 +1,87 @@
 package sabaylakbay_1.backend;
 
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 /**
  * MYSQL CONNECTION + small helpers so Backend.java stays short and easy to read.
  *
- * SETUP:
- *   1. Start MySQL (XAMPP: click Start on MySQL).
- *   2. Run database/sabaylakbay.sql once (phpMyAdmin > SQL tab > paste > Go).
- *   3. Add the MySQL driver to the project: right-click Libraries > Add JAR/Folder > mysql-connector-j-9.x.x.jar
- *   4. If your MySQL user or password is different, change USER / PASSWORD below.
+ * TWO DATABASES, ONE SWITCH:
+ *   ONLINE = false  -> your own MySQL on this PC (XAMPP / MySQL Workbench, localhost:3306)
+ *   ONLINE = true   -> the shared online database on TiDB Cloud (every PC sees the same data)
+ *
+ * SETUP (online):
+ *   1. Fill in ONLINE_HOST, ONLINE_USER and ONLINE_PASSWORD below
+ *      (TiDB Cloud > your instance > Connect). Keep the password out of chats and screenshots.
+ *   2. Set ONLINE = true, then Shift+F11 (Clean and Build) and F6.
+ *
+ * OPTIONAL: a file named "database.properties" in the project folder (or next to SabayLakbay.exe
+ * in the downloaded version) overrides these settings without rebuilding, for example:
+ *     online=true
+ *     host=gateway01.ap-southeast-1.prod.aws.tidbcloud.com
+ *     port=4000
+ *     user=xxxx.root
+ *     password=your-password
+ *
+ * SETUP (local): start MySQL, run database/sabaylakbay.sql once, add mysql-connector-j.jar to Libraries.
  */
 public final class Database {
 
-    // ===== CHANGE THESE IF YOUR MYSQL IS DIFFERENT =====
-    private static final String HOST = "localhost";
-    private static final int PORT = 3306;
-    private static final String DATABASE = "sabaylakbay";
-    private static final String USER = "root";
-    private static final String PASSWORD = "tjpogi1821!";      // XAMPP default is empty
+    // ===== WHICH DATABASE: true = online (TiDB Cloud), false = this PC =====
+    private static final boolean ONLINE = false;
 
-    private static final String URL = "jdbc:mysql://" + HOST + ":" + PORT + "/" + DATABASE
-            + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Manila&characterEncoding=UTF-8";
+    // ===== ONLINE: TiDB Cloud (copy these from TiDB Cloud > Connect) =====
+    private static final String ONLINE_HOST = "PASTE-HOST-HERE.tidbcloud.com";
+    private static final int ONLINE_PORT = 4000;
+    private static final String ONLINE_USER = "PASTE-USER-HERE.root";
+    private static final String ONLINE_PASSWORD = "";        // type your TiDB password here
+
+    // ===== LOCAL: MySQL on this PC =====
+    private static final String LOCAL_HOST = "localhost";
+    private static final int LOCAL_PORT = 3306;
+    private static final String LOCAL_USER = "root";
+    private static final String LOCAL_PASSWORD = "tjpogi1821!";
+
+    private static final String DATABASE = "sabaylakbay";
+
+    // ===== the settings actually used (from above, or from database.properties) =====
+    private static final boolean USE_ONLINE;
+    private static final String URL, USER, PASSWORD;
+
+    static {
+        Properties p = new Properties();
+        File f = new File("database.properties");
+        if (f.isFile()) {
+            try (InputStream in = new FileInputStream(f)) { p.load(in); }
+            catch (Exception e) { System.err.println("[Database] database.properties couldn't be read: " + e.getMessage()); }
+        }
+        USE_ONLINE = Boolean.parseBoolean(p.getProperty("online", String.valueOf(ONLINE)).trim());
+        String host = p.getProperty("host", USE_ONLINE ? ONLINE_HOST : LOCAL_HOST).trim();
+        int port = Integer.parseInt(p.getProperty("port", String.valueOf(USE_ONLINE ? ONLINE_PORT : LOCAL_PORT)).trim());
+        USER = p.getProperty("user", USE_ONLINE ? ONLINE_USER : LOCAL_USER).trim();
+        PASSWORD = p.getProperty("password", USE_ONLINE ? ONLINE_PASSWORD : LOCAL_PASSWORD);
+
+        String common = "&serverTimezone=Asia/Manila&characterEncoding=UTF-8&connectTimeout=15000";
+        URL = "jdbc:mysql://" + host + ":" + port + "/" + DATABASE + (USE_ONLINE
+                // online: an encrypted connection that also checks it's really TiDB Cloud (required by TiDB)
+                ? "?sslMode=VERIFY_IDENTITY&enabledTLSProtocols=TLSv1.2,TLSv1.3" + common
+                // local: no encryption needed on the same PC
+                : "?useSSL=false&allowPublicKeyRetrieval=true" + common);
+    }
 
     private Database() { }
+
+    /** True when the app uses the shared online database. */
+    public static boolean isOnline() { return USE_ONLINE; }
 
     /** Turns one row into an object (e.g. a User). */
     public interface RowMapper<T> {
@@ -42,10 +94,16 @@ public final class Database {
     /** Opens a new connection to MySQL. */
     public static Connection connect() {
         try {
-            return DriverManager.getConnection(URL, USER, PASSWORD);
+            Connection c = DriverManager.getConnection(URL, USER, PASSWORD);
+            // NOW() and CURDATE() in Philippine time, also on the online server (which runs on UTC)
+            try (Statement s = c.createStatement()) { s.execute("SET time_zone = '+08:00'"); }
+            return c;
         } catch (SQLException e) {
             if (e.getMessage() != null && e.getMessage().contains("No suitable driver"))
                 throw new RuntimeException("MySQL driver not found. Add mysql-connector-j.jar to the project Libraries.", e);
+            if (USE_ONLINE)
+                throw new RuntimeException("Can't connect to the online database. Check your internet connection, "
+                        + "and the host, user and password in Database.java (TiDB Cloud > Connect).\n\n" + e.getMessage(), e);
             throw new RuntimeException("Can't connect to MySQL. Make sure MySQL is running and the database "
                     + "'sabaylakbay' exists.\n\n" + e.getMessage(), e);
         }
@@ -60,7 +118,10 @@ public final class Database {
         R run(Connection c) throws SQLException;
     }
 
-    /** Runs a query on the shared connection. If MySQL was restarted, reconnects once and tries again. */
+    /**
+     * Runs a query on the shared connection. If the connection dropped (MySQL restarted, or the
+     * online database closed an idle connection), reconnects once and tries again.
+     */
     private static <R> R run(String sql, Call<R> call) {
         try {
             return call.run(conn());

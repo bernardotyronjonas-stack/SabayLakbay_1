@@ -88,6 +88,53 @@ public class MapPicker extends JPanel {
      * Looks up an address on the map and drops the pin there. Tries each text in order
      * (e.g. barangay + city, then just the city, then the province) and stops at the first match.
      */
+    /**
+     * Address search from most exact to least: tries each query in order and stops at the first one
+     * found. zooms[i] is how close to zoom in for that query; notes[i] is what to tell the traveler
+     * (null = just show the pinned place), e.g. "Couldn't find your street, pinned the barangay".
+     */
+    public void findAddress(String[] queries, int[] zooms, String[] notes) {
+        status.setText("Looking for the address on the map...");
+        status.setForeground(Theme.TEXT_GRAY);
+        new SwingWorker<Object[], Void>() {
+            @Override protected Object[] doInBackground() throws Exception {
+                for (int i = 0; i < queries.length; i++) {
+                    if (queries[i] == null || queries[i].isBlank()) continue;
+                    List<Place> found = lookup(queries[i]);
+                    if (!found.isEmpty()) return new Object[]{found.get(0), i};
+                }
+                return null;
+            }
+            @Override protected void done() {
+                try {
+                    Object[] r = get();
+                    if (r == null) {
+                        status.setText("This address isn't on the map. Click the map to drop the pin yourself.");
+                        status.setForeground(Theme.RED);
+                        return;
+                    }
+                    Place p = (Place) r[0];
+                    int i = (Integer) r[1];
+                    fromSearch = true;
+                    lookupId++;
+                    placeName = shortName(p.name);
+                    map.setView(p.lat, p.lng, zooms[i]);
+                    map.setPin(p.lat, p.lng);
+                    fromSearch = false;
+                    showStatus();
+                    if (notes[i] != null) {
+                        status.setText(notes[i]);
+                        status.setForeground(new Color(0xB54708));      // amber: found, but not exactly
+                    }
+                } catch (Exception ex) {
+                    fromSearch = false;
+                    status.setText("The map needs internet. Your address is still saved without a pin.");
+                    status.setForeground(Theme.RED);
+                }
+            }
+        }.execute();
+    }
+
     public void findAddress(String... queries) {
         status.setText("Looking for the address on the map...");
         status.setForeground(Theme.TEXT_GRAY);

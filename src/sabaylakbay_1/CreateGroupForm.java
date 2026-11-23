@@ -24,7 +24,9 @@ import java.time.LocalTime;
  */
 public class CreateGroupForm extends Page {
 
-    private static final String[] TRANSPORT = {"Bus", "Van", "Private car", "Boat / Ferry", "Plane", "Motorcycle", "Van + Boat", "Plane + Van"};
+    private static final String OTHER = "Other";
+    private static final String[] TRANSPORT = {"Bus", "Van", "Private car", "Jeepney", "Boat / Ferry", "Plane", "Train / LRT / MRT",
+            "Motorcycle", "Tricycle", "Bicycle", "Van + Boat", "Plane + Van", OTHER};
 
     private final RoundTextField title = new RoundTextField("e.g. Mt. Mayon Adventure");
     private final RoundTextField destination = new RoundTextField("e.g. Albay");
@@ -36,12 +38,14 @@ public class CreateGroupForm extends Page {
     private final OptionCard requestJoin = new OptionCard("users", "Request to join", "You approve each traveler before they join.");
     private final OptionCard openJoin = new OptionCard("check", "Open join", "Verified travelers join right away. Good for big, easy trips.");
     private final JComboBox<String> transport = new JComboBox<>(TRANSPORT);
+    private final RoundTextField otherTransport = new RoundTextField("Type it here, e.g. Habal-habal + bangka");
+    private final JPanel transportBox = new JPanel(new BorderLayout(8, 0));
     private static final String[] CATEGORIES = {"Hiking", "Beach", "Island hopping", "Food trip", "Road trip", "Sightseeing",
             "Camping", "Adventure", "City tour", "Other"};
     private final JComboBox<String> category = new JComboBox<>(CATEGORIES);
     private final JComboBox<Difficulty> difficulty = new JComboBox<>(Difficulty.values());
     private final RoundTextField meetingPlace = new RoundTextField("e.g. Cubao Bus Terminal, Quezon City");
-    private final DateField meetingTime = DateField.time();
+    private final TimeField meetingTime = new TimeField();
     private final TextAreaBox description = new TextAreaBox("What will the group do? Places, activities, what's included...", 5);
     private final TextAreaBox notes = new TextAreaBox("Notes for joiners: what to bring, rules, reminders...", 4);
     private final ImageBox preview = new ImageBox(null, "new", 12, true);
@@ -83,9 +87,14 @@ public class CreateGroupForm extends Page {
             cb.setPreferredSize(new Dimension(150, 40));
         }
         category.setEditable(true);
-        transport.setEditable(true);
         transport.setFont(Theme.font(Font.PLAIN, 13));
         transport.setPreferredSize(new Dimension(150, 40));
+        transport.setMaximumRowCount(TRANSPORT.length);
+        otherTransport.setPreferredSize(new Dimension(150, 40));
+        otherTransport.getAccessibleContext().setAccessibleName("Type your transportation");
+        transportBox.setOpaque(false);
+        transport.addActionListener(e -> showOtherTransport(true));
+        showOtherTransport(false);
         // trips can't start in the past, and the end date follows the start date
         start.setRange(LocalDate.now(), null);
         end.setRange(LocalDate.now(), null);
@@ -129,7 +138,7 @@ public class CreateGroupForm extends Page {
 
         c.gridy = ++y; c.gridx = 0; c.gridwidth = 2; card.add(section("Meet up"), c);
         c.gridwidth = 1;
-        c.gridy = ++y; c.gridx = 0; card.add(field("Mode of transportation", transport), c);
+        c.gridy = ++y; c.gridx = 0; card.add(field("Mode of transportation", transportBox), c);
         c.gridx = 1; card.add(field("Meeting time", meetingTime), c);
         c.gridy = ++y; c.gridx = 0; c.gridwidth = 2; card.add(field("Meeting place", meetingPlace), c);
         c.gridy = ++y; card.add(field("Pin the meeting place (travelers near it will see your trip)", meetPicker), c);
@@ -215,6 +224,7 @@ public class CreateGroupForm extends Page {
         maxMembers.setValue(8);
         requestJoin.setSelected(true);
         transport.setSelectedIndex(0);
+        otherTransport.setText("");
         category.setSelectedIndex(0);
         difficulty.setSelectedItem(Difficulty.EASY);
         meetingPlace.setText("");
@@ -241,7 +251,7 @@ public class CreateGroupForm extends Page {
         budget.setText(String.valueOf((long) g.getBudgetPerPerson()));
         maxMembers.setValue(g.getMaxMembers());
         (g.isOpenJoin() ? openJoin : requestJoin).setSelected(true);
-        transport.setSelectedItem(g.getTransportMode());
+        setTransport(g.getTransportMode());
         category.setSelectedItem(g.getCategory());
         difficulty.setSelectedItem(g.getDifficulty());
         meetingPlace.setText(g.getMeetingPlace());
@@ -261,6 +271,38 @@ public class CreateGroupForm extends Page {
                 : sabaylakbay_1.model.Photos.isStockPhoto(path) ? "Destination photo (Wikimedia Commons)" : new File(path).getName());
     }
 
+    /** Picking "Other" opens a box beside the list where the organizer types their own transportation. */
+    private void showOtherTransport(boolean focus) {
+        boolean other = OTHER.equals(transport.getSelectedItem());
+        transportBox.removeAll();
+        if (other) {
+            transport.setPreferredSize(new Dimension(130, 40));
+            transportBox.add(transport, BorderLayout.WEST);
+            transportBox.add(otherTransport, BorderLayout.CENTER);
+        } else {
+            transportBox.add(transport, BorderLayout.CENTER);
+        }
+        transportBox.revalidate();
+        transportBox.repaint();
+        if (other && focus) SwingUtilities.invokeLater(otherTransport::requestFocusInWindow);
+    }
+
+    private String transportText() {
+        Object t = transport.getSelectedItem();
+        if (OTHER.equals(t)) return otherTransport.getText().trim();
+        return t == null ? "" : t.toString().trim();
+    }
+
+    /** Edit mode: a saved value that isn't in the list goes into the "Other" box. */
+    private void setTransport(String mode) {
+        mode = mode == null ? "" : mode.trim();
+        boolean known = false;
+        for (String s : TRANSPORT) if (s.equalsIgnoreCase(mode) && !s.equals(OTHER)) { transport.setSelectedItem(s); known = true; }
+        if (!known && !mode.isEmpty()) { transport.setSelectedItem(OTHER); otherTransport.setText(mode); }
+        else if (!known) { transport.setSelectedIndex(0); otherTransport.setText(""); }
+        showOtherTransport(false);
+    }
+
     private void choosePhoto() {
         File f = sabaylakbay_1.ui.Dialogs.chooseImage(this, "Choose a cover photo for the trip");
         // BACKEND: upload/copy the file to your server or images folder and store that path instead.
@@ -273,6 +315,17 @@ public class CreateGroupForm extends Page {
             b = Double.parseDouble(budget.getText().replace(",", "").trim());
         } catch (NumberFormatException ex) {
             Theme.error(this, "Budget must be a number, e.g. 1500.");
+            return;
+        }
+        String t = transportText();
+        if (t.isEmpty()) {
+            Theme.error(this, "Type the mode of transportation, e.g. Habal-habal + bangka.");
+            otherTransport.requestFocusInWindow();
+            return;
+        }
+        if (t.length() > 60) {
+            Theme.error(this, "Keep the mode of transportation under 60 characters.");
+            otherTransport.requestFocusInWindow();
             return;
         }
         TravelGroup g = editing != null ? editing : new TravelGroup();
@@ -288,8 +341,7 @@ public class CreateGroupForm extends Page {
         Object cat = category.getSelectedItem();
         g.setCategory(cat == null ? "" : cat.toString().trim());
         g.setDifficulty((Difficulty) difficulty.getSelectedItem());
-        Object t = transport.getSelectedItem();
-        g.setTransportMode(t == null ? "" : t.toString().trim());
+        g.setTransportMode(t);
         g.setMeetingPlace(meetingPlace.getText().trim());
         g.setMeetingLatitude(meetPicker.getLat());   // null when no pin was dropped
         g.setMeetingLongitude(meetPicker.getLng());

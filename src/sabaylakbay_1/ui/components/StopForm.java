@@ -44,7 +44,7 @@ public final class StopForm {
         DateField day = DateField.date();
         day.setRange(tripStart, tripEnd);
         day.setDate(a.getDate() != null ? a.getDate() : tripStart);
-        DateField time = DateField.time();
+        TimeField time = new TimeField();
         time.setTime(a.getTime() != null ? a.getTime() : LocalTime.of(8, 0));
         RoundTextField title = new RoundTextField("e.g. Swim at Batlag Falls");
         title.setText(a.getTitle() == null ? "" : a.getTitle());
